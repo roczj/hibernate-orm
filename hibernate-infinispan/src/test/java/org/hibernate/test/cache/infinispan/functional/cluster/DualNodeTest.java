@@ -15,20 +15,16 @@ import org.hibernate.boot.Metadata;
 import org.hibernate.boot.MetadataSources;
 import org.hibernate.boot.registry.StandardServiceRegistry;
 import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
+import org.hibernate.cache.infinispan.util.InfinispanMessageLogger;
 import org.hibernate.cfg.Environment;
 import org.hibernate.engine.spi.SessionFactoryImplementor;
-import org.hibernate.resource.transaction.TransactionCoordinatorBuilder;
-import org.hibernate.resource.transaction.backend.jdbc.internal.JdbcResourceLocalTransactionCoordinatorBuilderImpl;
 import org.hibernate.resource.transaction.backend.jta.internal.JtaTransactionCoordinatorBuilderImpl;
+import org.hibernate.resource.transaction.spi.TransactionCoordinatorBuilder;
 
 import org.hibernate.test.cache.infinispan.functional.AbstractFunctionalTest;
 import org.hibernate.test.cache.infinispan.util.InfinispanTestingSetup;
-
 import org.hibernate.test.cache.infinispan.util.TxUtil;
-import org.infinispan.util.logging.Log;
-import org.infinispan.util.logging.LogFactory;
 import org.junit.ClassRule;
-import org.junit.runners.Parameterized;
 
 /**
  * @author Galder Zamarreño
@@ -36,7 +32,7 @@ import org.junit.runners.Parameterized;
  */
 public abstract class DualNodeTest extends AbstractFunctionalTest {
 
-	private static final Log log = LogFactory.getLog( DualNodeTest.class );
+	private static final InfinispanMessageLogger log = InfinispanMessageLogger.Provider.getLog( DualNodeTest.class );
 
 	@ClassRule
 	public static final InfinispanTestingSetup infinispanTestIdentifier = new InfinispanTestingSetup();
@@ -117,15 +113,6 @@ public abstract class DualNodeTest extends AbstractFunctionalTest {
 
 	protected Class<? extends TransactionCoordinatorBuilder> getTransactionCoordinatorBuilder() {
 		return JtaTransactionCoordinatorBuilderImpl.class;
-	}
-
-	protected void sleep(long ms) {
-		try {
-			Thread.sleep( ms );
-		}
-		catch (InterruptedException e) {
-			log.warn( "Interrupted during sleep", e );
-		}
 	}
 
 	protected void configureSecondNode(StandardServiceRegistryBuilder ssrb) {

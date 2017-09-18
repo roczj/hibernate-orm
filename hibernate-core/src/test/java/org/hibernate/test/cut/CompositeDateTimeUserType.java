@@ -27,9 +27,10 @@ import java.io.Serializable;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Types;
 
 import org.hibernate.HibernateException;
-import org.hibernate.engine.spi.SessionImplementor;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
 import org.hibernate.type.StandardBasicTypes;
 import org.hibernate.type.Type;
 import org.hibernate.usertype.CompositeUserType;
@@ -99,7 +100,7 @@ public class CompositeDateTimeUserType implements CompositeUserType {
 	}
 
 	@Override
-	public Object nullSafeGet(ResultSet rs, String[] names, SessionImplementor session, Object owner) throws HibernateException, SQLException {
+	public Object nullSafeGet(ResultSet rs, String[] names, SharedSessionContractImplementor session, Object owner) throws HibernateException, SQLException {
 		final Integer year = rs.getObject( names[0], Integer.class );
 		final Integer month = rs.getObject( names[1], Integer.class );
 		final Integer day = rs.getObject( names[2], Integer.class );
@@ -114,10 +115,10 @@ public class CompositeDateTimeUserType implements CompositeUserType {
 	}
 
 	@Override
-	public void nullSafeSet(PreparedStatement st, Object value, int index, SessionImplementor session) throws HibernateException, SQLException {
+	public void nullSafeSet(PreparedStatement st, Object value, int index, SharedSessionContractImplementor session) throws HibernateException, SQLException {
 		if ( value == null ) {
 			for (int i = 0; i < 6; i++ ) {
-				st.setObject( index + i, null );
+				st.setNull( index + i, Types.INTEGER );
 			}
 		} else {
 			final CompositeDateTime dateTime = (CompositeDateTime) value;
@@ -141,17 +142,17 @@ public class CompositeDateTimeUserType implements CompositeUserType {
 	}
 
 	@Override
-	public Serializable disassemble(Object value, SessionImplementor session) throws HibernateException {
+	public Serializable disassemble(Object value, SharedSessionContractImplementor session) throws HibernateException {
 		return deepCopy( value );
 	}
 
 	@Override
-	public Object assemble(Serializable cached, SessionImplementor session, Object owner) throws HibernateException {
+	public Object assemble(Serializable cached, SharedSessionContractImplementor session, Object owner) throws HibernateException {
 		return deepCopy( cached );
 	}
 
 	@Override
-	public Object replace(Object original, Object target, SessionImplementor session, Object owner) throws HibernateException {
+	public Object replace(Object original, Object target, SharedSessionContractImplementor session, Object owner) throws HibernateException {
 		return deepCopy( original );
 	}
 

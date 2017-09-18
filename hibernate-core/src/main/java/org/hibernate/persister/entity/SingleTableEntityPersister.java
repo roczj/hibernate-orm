@@ -620,6 +620,21 @@ public class SingleTableEntityPersister extends AbstractEntityPersister {
 			if ( !queryable.isAbstract() ) {
 				values.add( queryable.getDiscriminatorSQLValue() );
 			}
+			else if ( queryable.hasSubclasses() ) {
+				// if the treat is an abstract class, add the concrete implementations to values if any
+				Set<String> actualSubClasses = queryable.getEntityMetamodel().getSubclassEntityNames();
+
+				for ( String actualSubClass : actualSubClasses ) {
+					if ( actualSubClass.equals( subclass ) ) {
+						continue;
+					}
+
+					Queryable actualQueryable = (Queryable) getFactory().getEntityPersister( actualSubClass );
+					if ( !actualQueryable.hasSubclasses() ) {
+						values.add( actualQueryable.getDiscriminatorSQLValue() );
+					}
+				}
+			}
 		}
 		return values.toArray( new String[values.size()] );
 	}
@@ -697,7 +712,19 @@ public class SingleTableEntityPersister extends AbstractEntityPersister {
 	}
 
 	private int getSubclassPropertyTableNumber(String propertyName, String entityName) {
-		Type type = propertyMapping.toType( propertyName );
+		// When there are duplicated property names in the subclasses
+		// then propertyMapping.toType( propertyName ) may return an
+		// incorrect Type. To ensure correct results, lookup the property type
+		// using the concrete EntityPersister with the specified entityName
+		// (since the concrete EntityPersister cannot have duplicated property names).
+		final EntityPersister concreteEntityPersister;
+		if ( getEntityName().equals( entityName ) ) {
+			concreteEntityPersister = this;
+		}
+		else {
+			concreteEntityPersister = getFactory().getMetamodel().entityPersister( entityName );
+		}
+		Type type = concreteEntityPersister.getPropertyType( propertyName );
 		if ( type.isAssociationType() && ( (AssociationType) type ).useLHSPrimaryKey() ) {
 			return 0;
 		}

@@ -31,9 +31,9 @@ public final class TwoEntityOneAuditedQueryGenerator extends AbstractRelationQue
 	public TwoEntityOneAuditedQueryGenerator(
 			AuditEntitiesConfiguration verEntCfg, AuditStrategy auditStrategy,
 			String versionsMiddleEntityName, MiddleIdData referencingIdData,
-			MiddleIdData referencedIdData, boolean revisionTypeInId,
+			MiddleIdData referencedIdData, boolean elementRevisionTypeInId,
 			MiddleComponentData... componentData) {
-		super( verEntCfg, referencingIdData, revisionTypeInId );
+		super( verEntCfg, referencingIdData, elementRevisionTypeInId, elementRevisionTypeInId );
 
 		/*
 		 * The valid query that we need to create:
@@ -82,8 +82,8 @@ public final class TwoEntityOneAuditedQueryGenerator extends AbstractRelationQue
 		final String eeOriginalIdPropertyPath = MIDDLE_ENTITY_ALIAS + "." + originalIdPropertyName;
 		// SELECT new list(ee) FROM middleEntity ee
 		final QueryBuilder qb = new QueryBuilder( versionsMiddleEntityName, MIDDLE_ENTITY_ALIAS );
-		qb.addFrom( referencedIdData.getEntityName(), REFERENCED_ENTITY_ALIAS );
-		qb.addProjection( "new list", MIDDLE_ENTITY_ALIAS + ", " + REFERENCED_ENTITY_ALIAS, false, false );
+		qb.addFrom( referencedIdData.getEntityName(), REFERENCED_ENTITY_ALIAS, false );
+		qb.addProjection( "new list", MIDDLE_ENTITY_ALIAS + ", " + REFERENCED_ENTITY_ALIAS, null, false );
 		// WHERE
 		final Parameters rootParameters = qb.getRootParameters();
 		// ee.id_ref_ed = e.id_ref_ed
@@ -112,7 +112,7 @@ public final class TwoEntityOneAuditedQueryGenerator extends AbstractRelationQue
 				originalIdPropertyName, MIDDLE_ENTITY_ALIAS, true, componentData
 		);
 		// ee.revision_type != DEL
-		rootParameters.addWhereWithNamedParam( getRevisionTypePath(), "!=", DEL_REVISION_TYPE_PARAMETER );
+		rootParameters.addWhereWithNamedParam( getElementRevisionTypePath(), "!=", DEL_REVISION_TYPE_PARAMETER );
 	}
 
 	/**
@@ -130,7 +130,7 @@ public final class TwoEntityOneAuditedQueryGenerator extends AbstractRelationQue
 		// ee.revision = :revision
 		removed.addWhereWithNamedParam( verEntCfg.getRevisionNumberPath(), "=", REVISION_PARAMETER );
 		// ee.revision_type = DEL
-		removed.addWhereWithNamedParam( getRevisionTypePath(), "=", DEL_REVISION_TYPE_PARAMETER );
+		removed.addWhereWithNamedParam( getElementRevisionTypePath(), "=", DEL_REVISION_TYPE_PARAMETER );
 	}
 
 	@Override

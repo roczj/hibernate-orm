@@ -22,12 +22,12 @@ import org.hibernate.cache.spi.QueryKey;
 import org.hibernate.cache.spi.QueryResultsRegion;
 import org.hibernate.cache.spi.RegionFactory;
 import org.hibernate.cache.spi.UpdateTimestampsCache;
-import org.hibernate.engine.spi.SessionImplementor;
+import org.hibernate.engine.spi.CacheImplementor;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
+import org.hibernate.internal.CoreLogging;
 import org.hibernate.internal.CoreMessageLogger;
 import org.hibernate.type.Type;
 import org.hibernate.type.TypeHelper;
-
-import org.jboss.logging.Logger;
 
 /**
  * The standard implementation of the Hibernate QueryCache interface.  This
@@ -39,16 +39,13 @@ import org.jboss.logging.Logger;
  * @author Steve Ebersole
  */
 public class StandardQueryCache implements QueryCache {
-	private static final CoreMessageLogger LOG = Logger.getMessageLogger(
-			CoreMessageLogger.class,
-			StandardQueryCache.class.getName()
-	);
+	private static final CoreMessageLogger LOG = CoreLogging.messageLogger( StandardQueryCache.class );
 
 	private static final boolean DEBUGGING = LOG.isDebugEnabled();
 	private static final boolean TRACING = LOG.isTraceEnabled();
 
-	private QueryResultsRegion cacheRegion;
-	private UpdateTimestampsCache updateTimestampsCache;
+	private final QueryResultsRegion cacheRegion;
+	private final UpdateTimestampsCache updateTimestampsCache;
 
 	/**
 	 * Constructs a StandardQueryCache instance
@@ -80,6 +77,12 @@ public class StandardQueryCache implements QueryCache {
 		this.updateTimestampsCache = updateTimestampsCache;
 	}
 
+	public StandardQueryCache(QueryResultsRegion cacheRegion, CacheImplementor cacheManager) {
+		LOG.startingQueryCache( cacheRegion.getName() );
+		this.cacheRegion = cacheRegion;
+		this.updateTimestampsCache = cacheManager.getUpdateTimestampsCache();
+	}
+
 	@Override
 	public QueryResultsRegion getRegion() {
 		return cacheRegion;
@@ -107,7 +110,7 @@ public class StandardQueryCache implements QueryCache {
 			final Type[] returnTypes,
 			final List result,
 			final boolean isNaturalKeyLookup,
-			final SessionImplementor session) throws HibernateException {
+			final SharedSessionContractImplementor session) throws HibernateException {
 		if ( isNaturalKeyLookup && result.isEmpty() ) {
 			return false;
 		}
@@ -116,7 +119,9 @@ public class StandardQueryCache implements QueryCache {
 		}
 
 		final List cacheable = new ArrayList( result.size() + 1 );
-		logCachedResultDetails( key, null, returnTypes, cacheable );
+		if ( TRACING ) {
+			logCachedResultDetails( key, null, returnTypes, cacheable );
+		}
 		cacheable.add( session.getTimestamp() );
 
 		final boolean isSingleResult = returnTypes.length == 1;
@@ -125,7 +130,9 @@ public class StandardQueryCache implements QueryCache {
 					? returnTypes[0].disassemble( aResult, session, null )
 					: TypeHelper.disassemble( (Object[]) aResult, returnTypes, null, session, null );
 			cacheable.add( cacheItem );
-			logCachedResultRowDetails( returnTypes, aResult );
+			if ( TRACING ) {
+				logCachedResultRowDetails( returnTypes, aResult );
+			}
 		}
 
 		try {
@@ -146,14 +153,15 @@ public class StandardQueryCache implements QueryCache {
 			final Type[] returnTypes,
 			final boolean isNaturalKeyLookup,
 			final Set<Serializable> spaces,
-			final SessionImplementor session) throws HibernateException {
+			final SharedSessionContractImplementor session) throws HibernateException {
 		if ( DEBUGGING ) {
 			LOG.debugf( "Checking cached query results in region: %s", cacheRegion.getName() );
 		}
 
 		final List cacheable = getCachedResults( key, session );
-		logCachedResultDetails( key, spaces, returnTypes, cacheable );
-
+		if ( TRACING ) {
+			logCachedResultDetails( key, spaces, returnTypes, cacheable );
+		}
 		if ( cacheable == null ) {
 			if ( DEBUGGING ) {
 				LOG.debug( "Query results were not found in cache" );
@@ -182,40 +190,55 @@ public class StandardQueryCache implements QueryCache {
 			}
 		}
 
-		final List result = new ArrayList( cacheable.size() - 1 );
-		for ( int i = 1; i < cacheable.size(); i++ ) {
-			try {
-				if ( singleResult ) {
+		return assembleCachedResult(key, cacheable, isNaturalKeyLookup, singleResult, returnTypes, session);
+	}
+
+	private List assembleCachedResult(
+			final QueryKey key,
+			final List cacheable,
+			final boolean isNaturalKeyLookup,
+			boolean singleResult,
+			final Type[] returnTypes,
+			final SharedSessionContractImplementor session) throws HibernateException {
+
+		try {
+			final List result = new ArrayList( cacheable.size() - 1 );
+			if ( singleResult ) {
+				for ( int i = 1; i < cacheable.size(); i++ ) {
 					result.add( returnTypes[0].assemble( (Serializable) cacheable.get( i ), session, null ) );
 				}
-				else {
+			}
+			else {
+				for ( int i = 1; i < cacheable.size(); i++ ) {
 					result.add(
 							TypeHelper.assemble( (Serializable[]) cacheable.get( i ), returnTypes, session, null )
 					);
-				}
-				logCachedResultRowDetails( returnTypes, result.get( i - 1 ) );
-			}
-			catch ( RuntimeException ex ) {
-				if ( isNaturalKeyLookup ) {
-					// potentially perform special handling for natural-id look ups.
-					if ( UnresolvableObjectException.class.isInstance( ex )
-							|| EntityNotFoundException.class.isInstance( ex ) ) {
-						if ( DEBUGGING ) {
-							LOG.debug( "Unable to reassemble cached natural-id query result" );
-						}
-						cacheRegion.evict( key );
-
-						// EARLY EXIT !!!!!
-						return null;
+					if ( TRACING ) {
+						logCachedResultRowDetails( returnTypes, result.get( i - 1 ) );
 					}
 				}
-				throw ex;
 			}
+			return result;
 		}
-		return result;
+		catch ( RuntimeException ex ) {
+			if ( isNaturalKeyLookup ) {
+				// potentially perform special handling for natural-id look ups.
+				if ( UnresolvableObjectException.class.isInstance( ex )
+						|| EntityNotFoundException.class.isInstance( ex ) ) {
+					if ( DEBUGGING ) {
+						LOG.debug( "Unable to reassemble cached natural-id query result" );
+					}
+					cacheRegion.evict( key );
+
+					// EARLY EXIT !
+					return null;
+				}
+			}
+			throw ex;
+		}
 	}
 
-	private List getCachedResults(QueryKey key, SessionImplementor session) {
+	private List getCachedResults(QueryKey key, SharedSessionContractImplementor session) {
 		List cacheable = null;
 		try {
 			session.getEventListenerManager().cacheGetStart();
@@ -228,7 +251,7 @@ public class StandardQueryCache implements QueryCache {
 	}
 
 
-	protected boolean isUpToDate(Set<Serializable> spaces, Long timestamp, SessionImplementor session) {
+	protected boolean isUpToDate(Set<Serializable> spaces, Long timestamp, SharedSessionContractImplementor session) {
 		if ( DEBUGGING ) {
 			LOG.debugf( "Checking query spaces are up-to-date: %s", spaces );
 		}
@@ -267,9 +290,6 @@ public class StandardQueryCache implements QueryCache {
 	}
 
 	private static void logCachedResultRowDetails(Type[] returnTypes, Object result) {
-		if ( !TRACING ) {
-			return;
-		}
 		logCachedResultRowDetails(
 				returnTypes,
 				( result instanceof Object[] ? (Object[]) result : new Object[] { result } )

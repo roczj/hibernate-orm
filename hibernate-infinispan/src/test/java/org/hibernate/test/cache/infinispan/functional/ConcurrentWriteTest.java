@@ -11,6 +11,7 @@ import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.Callable;
@@ -22,14 +23,15 @@ import java.util.concurrent.TimeUnit;
 
 import org.hibernate.FlushMode;
 import org.hibernate.LockMode;
+import org.hibernate.cache.infinispan.util.InfinispanMessageLogger;
 import org.hibernate.stat.SecondLevelCacheStatistics;
 
 import org.hibernate.test.cache.infinispan.functional.entities.Contact;
 import org.hibernate.test.cache.infinispan.functional.entities.Customer;
+import org.hibernate.test.cache.infinispan.util.TestInfinispanRegionFactory;
+import org.hibernate.test.cache.infinispan.util.TestTimeService;
+import org.junit.Ignore;
 import org.junit.Test;
-
-import org.infinispan.util.logging.Log;
-import org.infinispan.util.logging.LogFactory;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
@@ -40,7 +42,7 @@ import static org.junit.Assert.assertNull;
  * @author Galder Zamarreño
  */
 public class ConcurrentWriteTest extends SingleNodeTest {
-	private static final Log log = LogFactory.getLog( ConcurrentWriteTest.class );
+	private static final InfinispanMessageLogger log = InfinispanMessageLogger.Provider.getLog( ConcurrentWriteTest.class );
 	private static final boolean trace = log.isTraceEnabled();
 	/**
 	 * when USER_COUNT==1, tests pass, when >4 tests fail
@@ -50,6 +52,7 @@ public class ConcurrentWriteTest extends SingleNodeTest {
 	private static final int THINK_TIME_MILLIS = 10;
 	private static final long LAUNCH_INTERVAL_MILLIS = 10;
 	private static final Random random = new Random();
+	private static final TestTimeService TIME_SERVICE = new TestTimeService();
 
 	/**
 	 * kill switch used to stop all users when one fails
@@ -73,6 +76,12 @@ public class ConcurrentWriteTest extends SingleNodeTest {
 	}
 
 	@Override
+	protected void addSettings(Map settings) {
+		super.addSettings(settings);
+		settings.put(TestInfinispanRegionFactory.TIME_SERVICE, TIME_SERVICE);
+	}
+
+	@Override
 	protected void cleanupTest() throws Exception {
 		try {
 			super.cleanupTest();
@@ -92,14 +101,14 @@ public class ConcurrentWriteTest extends SingleNodeTest {
 		// setup
 		sessionFactory().getStatistics().clear();
 		// wait a while to make sure that timestamp comparison works after invalidateRegion
-		Thread.sleep(1);
+		TIME_SERVICE.advance(1);
 
 		Customer customer = createCustomer( 0 );
 		final Integer customerId = customer.getId();
 		getCustomerIDs().add( customerId );
 
 		// wait a while to make sure that timestamp comparison works after collection remove (during insert)
-		Thread.sleep(1);
+		TIME_SERVICE.advance(1);
 
 		assertNull( "contact exists despite not being added", getFirstContact( customerId ) );
 
@@ -136,6 +145,8 @@ public class ConcurrentWriteTest extends SingleNodeTest {
 
 	}
 
+	// Ignoring the test as it's more of a stress-test: this should be enabled manually
+	@Ignore
 	@Test
 	public void testManyUsers() throws Throwable {
 		try {
@@ -155,7 +166,6 @@ public class ConcurrentWriteTest extends SingleNodeTest {
 				futures.add( future );
 				Thread.sleep( LAUNCH_INTERVAL_MILLIS ); // rampup
 			}
-//         barrier.await(); // wait for all threads to be ready
 			barrier.await( 2, TimeUnit.MINUTES ); // wait for all threads to finish
 			log.info( "All threads finished, let's shutdown the executor and check whether any exceptions were reported" );
 			for ( Future<Void> future : futures ) {
@@ -311,7 +321,7 @@ public class ConcurrentWriteTest extends SingleNodeTest {
 		);
 
 		for ( UserRunner r : runners ) {
-			sb.append( r.toString() + System.getProperty( "line.separator" ) );
+			sb.append( r.toString() ).append( System.lineSeparator() );
 		}
 		return sb.toString();
 	}
@@ -369,7 +379,7 @@ public class ConcurrentWriteTest extends SingleNodeTest {
 					thinkRandomTime();
 					++completedIterations;
 					if ( trace ) {
-						log.tracef( "Iteration completed {0}", completedIterations );
+						log.tracef( "Iteration completed %d", completedIterations );
 					}
 				}
 			}

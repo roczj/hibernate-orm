@@ -12,7 +12,7 @@ import org.hibernate.HibernateException;
 import org.hibernate.PropertyValueException;
 import org.hibernate.bytecode.enhance.spi.LazyPropertyInitializer;
 import org.hibernate.engine.spi.CascadingActions;
-import org.hibernate.engine.spi.SessionImplementor;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
 import org.hibernate.persister.entity.EntityPersister;
 import org.hibernate.type.CollectionType;
 import org.hibernate.type.CompositeType;
@@ -24,7 +24,7 @@ import org.hibernate.type.Type;
  * @author Gavin King
  */
 public final class Nullability {
-	private final SessionImplementor session;
+	private final SharedSessionContractImplementor session;
 	private final boolean checkNullability;
 
 	/**
@@ -32,9 +32,9 @@ public final class Nullability {
 	 *
 	 * @param session The session
 	 */
-	public Nullability(SessionImplementor session) {
+	public Nullability(SharedSessionContractImplementor session) {
 		this.session = session;
-		this.checkNullability = session.getFactory().getSettings().isCheckNullability();
+		this.checkNullability = session.getFactory().getSessionFactoryOptions().isCheckNullability();
 	}
 	/**
 	 * Check nullability of the class persister properties

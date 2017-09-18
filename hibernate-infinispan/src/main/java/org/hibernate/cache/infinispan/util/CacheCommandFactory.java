@@ -6,8 +6,8 @@
  */
 package org.hibernate.cache.infinispan.util;
 
+import java.util.Collection;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -36,22 +36,19 @@ public class CacheCommandFactory implements ExtendedModuleCommandFactory {
    /**
     * Add region so that commands can be cleared on shutdown.
     *
-    * @param regionName name of the region
     * @param region instance to keep track of
     */
-	public void addRegion(String regionName, BaseRegion region) {
-		allRegions.put( regionName, region );
+	public void addRegion(BaseRegion region) {
+		allRegions.put( region.getName(), region );
 	}
 
    /**
     * Clear all regions from this command factory.
     *
-    * @param regionNames collection of regions to clear
+    * @param regions collection of regions to clear
     */
-	public void clearRegions(List<String> regionNames) {
-		for ( String regionName : regionNames ) {
-			allRegions.remove( regionName );
-		}
+	public void clearRegions(Collection<BaseRegion> regions) {
+		regions.forEach( region -> allRegions.remove( region.getName() ) );
 	}
 
 	@Override

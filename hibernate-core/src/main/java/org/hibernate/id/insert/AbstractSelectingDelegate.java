@@ -11,7 +11,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
-import org.hibernate.engine.spi.SessionImplementor;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
 import org.hibernate.id.PostInsertIdentityPersister;
 import org.hibernate.pretty.MessageHelper;
 
@@ -32,7 +32,7 @@ public abstract class AbstractSelectingDelegate implements InsertGeneratedIdenti
 	@Override
 	public final Serializable performInsert(
 			String insertSQL,
-			SessionImplementor session,
+			SharedSessionContractImplementor session,
 			Binder binder) {
 		try {
 			// prepare and execute the insert
@@ -45,12 +45,12 @@ public abstract class AbstractSelectingDelegate implements InsertGeneratedIdenti
 				session.getJdbcCoordinator().getResultSetReturn().executeUpdate( insert );
 			}
 			finally {
-				session.getJdbcCoordinator().getResourceRegistry().release( insert );
+				session.getJdbcCoordinator().getLogicalConnection().getResourceRegistry().release( insert );
 				session.getJdbcCoordinator().afterStatementExecution();
 			}
 		}
 		catch (SQLException sqle) {
-			throw session.getFactory().getSQLExceptionHelper().convert(
+			throw session.getJdbcServices().getSqlExceptionHelper().convert(
 					sqle,
 					"could not insert: " + MessageHelper.infoString( persister ),
 					insertSQL
@@ -72,17 +72,17 @@ public abstract class AbstractSelectingDelegate implements InsertGeneratedIdenti
 					return getResult( session, rs, binder.getEntity() );
 				}
 				finally {
-					session.getJdbcCoordinator().getResourceRegistry().release( rs, idSelect );
+					session.getJdbcCoordinator().getLogicalConnection().getResourceRegistry().release( rs, idSelect );
 				}
 			}
 			finally {
-				session.getJdbcCoordinator().getResourceRegistry().release( idSelect );
+				session.getJdbcCoordinator().getLogicalConnection().getResourceRegistry().release( idSelect );
 				session.getJdbcCoordinator().afterStatementExecution();
 			}
 
 		}
 		catch (SQLException sqle) {
-			throw session.getFactory().getSQLExceptionHelper().convert(
+			throw session.getJdbcServices().getSqlExceptionHelper().convert(
 					sqle,
 					"could not retrieve generated id after insert: " + MessageHelper.infoString( persister ),
 					insertSQL
@@ -107,7 +107,7 @@ public abstract class AbstractSelectingDelegate implements InsertGeneratedIdenti
 	 * @throws SQLException
 	 */
 	protected void bindParameters(
-			SessionImplementor session,
+			SharedSessionContractImplementor session,
 			PreparedStatement ps,
 			Object entity) throws SQLException {
 	}
@@ -124,7 +124,7 @@ public abstract class AbstractSelectingDelegate implements InsertGeneratedIdenti
 	 * @throws SQLException
 	 */
 	protected abstract Serializable getResult(
-			SessionImplementor session,
+			SharedSessionContractImplementor session,
 			ResultSet rs,
 			Object entity) throws SQLException;
 

@@ -15,6 +15,7 @@ import org.hibernate.cache.spi.access.SoftLock;
 import org.hibernate.engine.spi.EntityEntry;
 import org.hibernate.engine.spi.PersistenceContext;
 import org.hibernate.engine.spi.SessionImplementor;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
 import org.hibernate.event.service.spi.EventListenerGroup;
 import org.hibernate.event.spi.EventType;
 import org.hibernate.event.spi.PostCommitDeleteEventListener;
@@ -71,7 +72,7 @@ public class EntityDeleteAction extends EntityAction {
 	public void execute() throws HibernateException {
 		final Serializable id = getId();
 		final EntityPersister persister = getPersister();
-		final SessionImplementor session = getSession();
+		final SharedSessionContractImplementor session = getSession();
 		final Object instance = getInstance();
 
 		final boolean veto = preDelete();
@@ -121,7 +122,7 @@ public class EntityDeleteAction extends EntityAction {
 		postDelete();
 
 		if ( getSession().getFactory().getStatistics().isStatisticsEnabled() && !veto ) {
-			getSession().getFactory().getStatisticsImplementor().deleteEntity( getPersister().getEntityName() );
+			getSession().getFactory().getStatistics().deleteEntity( getPersister().getEntityName() );
 		}
 	}
 
@@ -184,7 +185,7 @@ public class EntityDeleteAction extends EntityAction {
 	}
 
 	@Override
-	public void doAfterTransactionCompletion(boolean success, SessionImplementor session) throws HibernateException {
+	public void doAfterTransactionCompletion(boolean success, SharedSessionContractImplementor session) throws HibernateException {
 		EntityPersister entityPersister = getPersister();
 		if ( entityPersister.hasCache() ) {
 			EntityRegionAccessStrategy cache = entityPersister.getCacheAccessStrategy();
@@ -203,7 +204,7 @@ public class EntityDeleteAction extends EntityAction {
 	protected boolean hasPostCommitEventListeners() {
 		final EventListenerGroup<PostDeleteEventListener> group = listenerGroup( EventType.POST_COMMIT_DELETE );
 		for ( PostDeleteEventListener listener : group.listeners() ) {
-			if ( listener.requiresPostCommitHanding( getPersister() ) ) {
+			if ( listener.requiresPostCommitHandling( getPersister() ) ) {
 				return true;
 			}
 		}

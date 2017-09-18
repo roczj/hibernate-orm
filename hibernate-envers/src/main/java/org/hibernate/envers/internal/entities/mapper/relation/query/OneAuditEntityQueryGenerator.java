@@ -8,6 +8,8 @@ package org.hibernate.envers.internal.entities.mapper.relation.query;
 
 import org.hibernate.envers.configuration.internal.AuditEntitiesConfiguration;
 import org.hibernate.envers.configuration.internal.GlobalConfiguration;
+import org.hibernate.envers.internal.entities.mapper.id.AbstractCompositeIdMapper;
+import org.hibernate.envers.internal.entities.mapper.id.IdMapper;
 import org.hibernate.envers.internal.entities.mapper.relation.MiddleIdData;
 import org.hibernate.envers.internal.tools.query.Parameters;
 import org.hibernate.envers.internal.tools.query.QueryBuilder;
@@ -23,16 +25,36 @@ import static org.hibernate.envers.internal.entities.mapper.relation.query.Query
  *
  * @author Adam Warski (adam at warski dot org)
  * @author Lukasz Antoniak (lukasz dot antoniak at gmail dot com)
+ * @author Chris Cranford
  */
 public final class OneAuditEntityQueryGenerator extends AbstractRelationQueryGenerator {
 	private final String queryString;
 	private final String queryRemovedString;
+	private final String mappedBy;
+	private final boolean multipleIdMapperKey;
 
 	public OneAuditEntityQueryGenerator(
-			GlobalConfiguration globalCfg, AuditEntitiesConfiguration verEntCfg,
-			AuditStrategy auditStrategy, MiddleIdData referencingIdData,
-			String referencedEntityName, MiddleIdData referencedIdData, boolean revisionTypeInId) {
-		super( verEntCfg, referencingIdData, revisionTypeInId );
+			GlobalConfiguration globalCfg,
+			AuditEntitiesConfiguration verEntCfg,
+			AuditStrategy auditStrategy,
+			MiddleIdData referencingIdData,
+			String referencedEntityName,
+			MiddleIdData referencedIdData,
+			boolean revisionTypeInId,
+			String mappedBy,
+			boolean mappedByKey) {
+		super( verEntCfg, referencingIdData, revisionTypeInId, revisionTypeInId );
+
+		this.mappedBy = mappedBy;
+
+		// HHH-11770 We use AbstractCompositeIdMapper here to handle EmbeddedIdMapper and MultipleIdMappper support
+		// so that OneAuditEntityQueryGenerator supports mappings to both @IdClass and @EmbeddedId components.
+		if ( ( referencedIdData.getOriginalMapper() instanceof AbstractCompositeIdMapper ) && mappedByKey ) {
+			multipleIdMapperKey = true;
+		}
+		else {
+			multipleIdMapperKey = false;
+		}
 
 		/*
 		 * The valid query that we need to create:
@@ -70,10 +92,19 @@ public final class OneAuditEntityQueryGenerator extends AbstractRelationQueryGen
 	private QueryBuilder commonQueryPart(String versionsReferencedEntityName) {
 		// SELECT e FROM versionsEntity e
 		final QueryBuilder qb = new QueryBuilder( versionsReferencedEntityName, REFERENCED_ENTITY_ALIAS );
-		qb.addProjection( null, REFERENCED_ENTITY_ALIAS, false, false );
+		qb.addProjection( null, REFERENCED_ENTITY_ALIAS, null, false );
 		// WHERE
-		// e.id_ref_ed = :id_ref_ed
-		referencingIdData.getPrefixedMapper().addNamedIdEqualsToQuery( qb.getRootParameters(), null, true );
+		if ( multipleIdMapperKey ) {
+			// HHH-7625
+			// support @OneToMany(mappedBy) to @ManyToOne @IdClass attribute.
+			// e.originalId.id_ref_ed.id = :id_ref_ed
+			final IdMapper mapper = getMultipleIdPrefixedMapper();
+			mapper.addNamedIdEqualsToQuery( qb.getRootParameters(), null, referencingIdData.getPrefixedMapper(), true );
+		}
+		else {
+			// e.id_ref_ed = :id_ref_ed
+			referencingIdData.getPrefixedMapper().addNamedIdEqualsToQuery( qb.getRootParameters(), null, true );
+		}
 		return qb;
 	}
 
@@ -93,7 +124,7 @@ public final class OneAuditEntityQueryGenerator extends AbstractRelationQueryGen
 				true
 		);
 		// e.revision_type != DEL
-		rootParameters.addWhereWithNamedParam( getRevisionTypePath(), false, "!=", DEL_REVISION_TYPE_PARAMETER );
+		rootParameters.addWhereWithNamedParam( getElementRevisionTypePath(), false, "!=", DEL_REVISION_TYPE_PARAMETER );
 	}
 
 	/**
@@ -112,7 +143,7 @@ public final class OneAuditEntityQueryGenerator extends AbstractRelationQueryGen
 		// e.revision = :revision
 		removed.addWhereWithNamedParam( verEntCfg.getRevisionNumberPath(), false, "=", REVISION_PARAMETER );
 		// e.revision_type = DEL
-		removed.addWhereWithNamedParam( getRevisionTypePath(), false, "=", DEL_REVISION_TYPE_PARAMETER );
+		removed.addWhereWithNamedParam( getElementRevisionTypePath(), false, "=", DEL_REVISION_TYPE_PARAMETER );
 	}
 
 	@Override
@@ -123,5 +154,10 @@ public final class OneAuditEntityQueryGenerator extends AbstractRelationQueryGen
 	@Override
 	protected String getQueryRemovedString() {
 		return queryRemovedString;
+	}
+
+	private IdMapper getMultipleIdPrefixedMapper() {
+		final String prefix = verEntCfg.getOriginalIdPropName() + "." + mappedBy + ".";
+		return referencingIdData.getOriginalMapper().prefixMappedProperties( prefix );
 	}
 }

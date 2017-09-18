@@ -80,6 +80,17 @@ public abstract class NClobTypeDescriptor implements SqlTypeDescriptor {
 						NCLOB_BINDING.getNClobBinder( javaTypeDescriptor ).doBind( st, value, index, options );
 					}
 				}
+
+				@Override
+				protected void doBind(CallableStatement st, X value, String name, WrapperOptions options)
+						throws SQLException {
+					if ( options.useStreamForLobBinding() ) {
+						STREAM_BINDING.getNClobBinder( javaTypeDescriptor ).doBind( st, value, name, options );
+					}
+					else {
+						NCLOB_BINDING.getNClobBinder( javaTypeDescriptor ).doBind( st, value, name, options );
+					}
+				}
 			};
 		}
 	};
@@ -92,6 +103,12 @@ public abstract class NClobTypeDescriptor implements SqlTypeDescriptor {
 				protected void doBind(PreparedStatement st, X value, int index, WrapperOptions options)
 						throws SQLException {
 					st.setNClob( index, javaTypeDescriptor.unwrap( value, NClob.class, options ) );
+				}
+
+				@Override
+				protected void doBind(CallableStatement st, X value, String name, WrapperOptions options)
+						throws SQLException {
+					st.setNClob( name, javaTypeDescriptor.unwrap( value, NClob.class, options ) );
 				}
 			};
 		}
@@ -109,7 +126,18 @@ public abstract class NClobTypeDescriptor implements SqlTypeDescriptor {
 							CharacterStream.class,
 							options
 					);
-					st.setCharacterStream( index, characterStream.asReader(), characterStream.getLength() );
+					st.setNCharacterStream( index, characterStream.asReader(), characterStream.getLength() );
+				}
+
+				@Override
+				protected void doBind(CallableStatement st, X value, String name, WrapperOptions options)
+						throws SQLException {
+					final CharacterStream characterStream = javaTypeDescriptor.unwrap(
+							value,
+							CharacterStream.class,
+							options
+					);
+					st.setNCharacterStream( name, characterStream.asReader(), characterStream.getLength() );
 				}
 			};
 		}

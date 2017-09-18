@@ -6,30 +6,25 @@ to applications and other components/libraries.  It is also provides an implemen
 JPA specification, which is the standardized Java specification for ORM.  See 
 [Hibernate.org](http://hibernate.org/orm/) for additional information. 
 
-[![Build Status](http://ci.hibernate.org/job/hibernate-orm-master-h2/badge/icon)](http://ci.hibernate.org/job/hibernate-orm-master-h2/)
+[![Build Status](http://ci.hibernate.org/job/hibernate-orm-master-h2-main/badge/icon)](http://ci.hibernate.org/job/hibernate-orm-master-h2-main/)
 
-
-Quickstart
-==========
-
-     git clone git://github.com/hibernate/hibernate-orm.git
-     cd hibernate-orm
-     ./gradlew clean build
-
-The build requires a Java 8 JDK as JAVA_HOME, but will ensure Java 6 compatibility.
- 
 
 Resources
 =========
-     
+
+The build requires a Java 8 JDK as JAVA_HOME.
+
+You will need http://git-scm.com/[git] to obtain the http://github.com/hibernate/hibernate-orm/[source].
+
 Hibernate uses [Gradle](http://gradle.org) as its build tool.  See the _Gradle Primer_ section below if you are new to
 Gradle.
 
 Contributors should read the [Contributing Guide](CONTRIBUTING.md)
 
 See the guides for setting up [IntelliJ](https://developer.jboss.org/wiki/ContributingToHibernateUsingIntelliJ) or
-[Eclipse](https://developer.jboss.org/wiki/ContributingToHibernateUsingEclipse) as your development environment.  [Building Hibernate ORM](https://community.jboss.org/wiki/BuildingHibernateORM4x) 
-is somewhat outdated, but still has
+[Eclipse](https://developer.jboss.org/wiki/ContributingToHibernateUsingEclipse) as your development environment.
+
+Check out the _Getting Started_ section in CONTRIBUTING.md for getting started working on Hibernate source.
 
 
 CI Builds
@@ -40,17 +35,16 @@ push to the upstream repository.   Overall there are a few different jobs, all o
 [http://ci.hibernate.org/view/ORM/](http://ci.hibernate.org/view/ORM/)
 
 
-
 Gradle primer
-=============
+=========
 
 This section describes some of the basics developers and contributors new to Gradle might 
 need to know to get productive quickly.  The Gradle documentation is very well done; 2 in 
 particular that are indispensable:
 
-* [Gradle User Guide](http://gradle.org/docs/current/userguide/userguide_single.html) is a typical user guide in that
+* [Gradle User Guide](https://docs.gradle.org/current/userguide/userguide_single.html) is a typical user guide in that
 it follows a topical approach to describing all of the capabilities of Gradle.
-* [Gradle DSL Guide](http://gradle.org/docs/current/dsl/index.html) is quite unique and excellent in quickyl
+* [Gradle DSL Guide](https://docs.gradle.org/current/dsl/index.html) is quite unique and excellent in quickly
 getting up to speed on certain aspects of Gradle.
 
 
@@ -65,8 +59,15 @@ the command `gradlew` (or `gradlew.bat`) rather than `gradle` (or `gradle.bat`) 
 Note that `gradlew` is only available in the project's root dir, so depending on your `pwd` you may need to adjust 
 the path to `gradlew` as well.
 
+Examples use the `gradle` syntax, but just swap `gradlew` (properly relative) for `gradle` if you wish to use 
+the wrapper.
+
+_Note that another reason to use `gradlew` is that it uses the exact version of Gradle that the build is 
+defined to work with.
+
+
 Executing Tasks
----------------
+------------------------
 
 Gradle uses the concept of build tasks (equivalent to Ant targets or Maven phases/goals). You can get a list of
 available tasks via 
@@ -81,10 +82,10 @@ either:
 2. name the "task path".  For example, in order to run the tests for the _hibernate-core_ module from the root directory you could say `gradle hibernate-core:test`
 
 Common Java related tasks
--------------------------
+------------------------
 
 * _build_ - Assembles (jars) and tests this project
-* _buildDependents_ - Assembles and tests this project and all projects that depend on it.  So think of running this in hibernate-entitymanager, Gradle would assemble and test hibernate-entitymanager as well as hibernate-envers (because envers depends on entitymanager)
+* _buildDependents_ - Assembles and tests this project and all projects that depend on it.  So think of running this in hibernate-core, Gradle would assemble and test hibernate-core as well as hibernate-envers (because envers depends on core)
 * _classes_ - Compiles the main classes
 * _testClasses_ - Compiles the test classes
 * _compile_ (Hibernate addition) - Performs all compilation tasks including staging resources from both main and test
@@ -97,3 +98,32 @@ never uses this, but it can be useful for testing your build with other local Ma
 * _idea_ - Generates an IntelliJ/IDEA project (although the preferred approach is to use IntelliJ's Gradle import).
 * _clean_ - Cleans the build directory
 
+
+Testing and databases
+=====================
+
+Testing against a specific database can be achieved in 2 different ways:
+
+
+Using the "Matrix Testing Plugin" for Gradle.
+---------------------------------------------
+
+Coming soon...
+
+
+Using "profiles"
+------------------------
+
+The Hibernate build defines a number of database testing "profiles" in `databases.gradle`.  These
+profiles can be activated by name using the `db` build property which can be passed either as
+a JVM system prop (`-D`) or as a Gradle project property (`-P`).  Examples below use the Gradle
+project property approach.
+
+    gradle clean build -Pdb=pgsql
+
+To run a test from your IDE, you need to ensure the property expansions happen.
+Use the following command:
+
+    gradle clean compile -Pdb=pgsql
+
+_*NOTE : If you are running tests against a JDBC driver that is not available via Maven central (generally due to license nonsense - Oracle, DB2, etc) be sure to add these drivers to your local Maven repo cache (~/.m2/repository) or (better) add it to a personal Maven repo server*_

@@ -2,6 +2,8 @@ header
 {
 package org.hibernate.hql.internal.antlr;
 
+import java.util.Stack;
+
 import org.hibernate.internal.CoreMessageLogger;
 import org.jboss.logging.Logger;
 }
@@ -36,6 +38,7 @@ tokens
 	FROM_FRAGMENT;	// A fragment of SQL that represents a table reference in a FROM clause.
 	IMPLIED_FROM;	// An implied FROM element.
 	JOIN_FRAGMENT;	// A JOIN fragment.
+	ENTITY_JOIN; 	// An "ad-hoc" join to an entity
 	SELECT_CLAUSE;
 	LEFT_OUTER;
 	RIGHT_OUTER;
@@ -75,6 +78,7 @@ tokens
 	private int currentClauseType;
 	private int currentTopLevelClauseType;
 	private int currentStatementType;
+	private Stack<Integer> parentClauses = new Stack<Integer>();
 
 	public final boolean isSubQuery() {
 		return level > 1;
@@ -153,10 +157,15 @@ tokens
 	}
 
 	private void handleClauseStart(int clauseType) {
+		parentClauses.push(currentClauseType);
 		currentClauseType = clauseType;
 		if ( level == 1 ) {
 			currentTopLevelClauseType = clauseType;
 		}
+	}
+
+	private void handleClauseEnd() {
+		currentClauseType = parentClauses.pop();
 	}
 
 	///////////////////////////////////////////////////////////////////////////
@@ -199,6 +208,8 @@ tokens
 	protected void processNumericLiteral(AST literal) throws SemanticException { }
 
 	protected void resolve(AST node) throws SemanticException { }
+
+	protected void resolve(AST node, AST predicateNode) throws SemanticException { }
 
 	protected void resolveSelectExpression(AST dotNode) throws SemanticException { }
 
@@ -252,6 +263,8 @@ tokens
     protected void processMapComponentReference(AST node) throws SemanticException { }
 
 	protected void validateMapPropertyExpression(AST node) throws SemanticException { }
+	protected void finishFromClause (AST fromClause) throws SemanticException { }
+
 }
 
 // The main statement rule.
@@ -300,6 +313,7 @@ intoClause! {
 	}
 	: #( INTO { handleClauseStart( INTO ); } (p=path) ps:insertablePropertySpec ) {
 		#intoClause = createIntoClause(p, ps);
+		handleClauseEnd();
 	}
 	;
 
@@ -308,7 +322,9 @@ insertablePropertySpec
 	;
 
 setClause
-	: #( SET { handleClauseStart( SET ); } (assignment)* )
+	: #( SET { handleClauseStart( SET ); } (assignment)* ) {
+		handleClauseEnd();
+	}
 	;
 
 assignment
@@ -321,7 +337,7 @@ assignment
 
 // For now, just use expr.  Revisit after ejb3 solidifies this.
 newValue
-	: expr | query
+	: expr [ null ] | query
 	;
 
 // The query / subquery rule. Pops the current 'from node' context 
@@ -346,7 +362,9 @@ query!
 	;
 
 orderClause
-	: #(ORDER { handleClauseStart( ORDER ); } orderExprs)
+	: #(ORDER { handleClauseStart( ORDER ); } orderExprs) {
+		handleClauseEnd();
+	}
 	;
 
 orderExprs
@@ -364,7 +382,7 @@ nullPrecedence
 
 orderExpr
 	: { isOrderExpressionResultVariableRef( _t ) }? resultVariableRef
-	| expr
+	| expr [ null ]
 	;
 
 resultVariableRef!
@@ -376,12 +394,15 @@ resultVariableRef!
 	;
 
 groupClause
-	: #(GROUP { handleClauseStart( GROUP ); } (expr)+ ( #(HAVING logicalExpr) )? )
+	: #(GROUP { handleClauseStart( GROUP ); } (expr [ null ])+ ( #(HAVING logicalExpr) )? ) {
+		handleClauseEnd();
+	}
 	;
 
 selectClause!
 	: #(SELECT { handleClauseStart( SELECT ); beforeSelectClause(); } (d:DISTINCT)? x:selectExprList ) {
 		#selectClause = #([SELECT_CLAUSE,"{select clause}"], #d, #x);
+		handleClauseEnd();
 	}
 	;
 
@@ -409,8 +430,8 @@ selectExpr
 	| functionCall
 	| count
 	| collectionFunction			// elements() or indices()
-	| literal
-	| arithmeticExpr
+	| constant
+	| arithmeticExpr [ null ]
 	| logicalExpr
 	| parameter
 	| query
@@ -429,7 +450,7 @@ constructor
 	;
 
 aggregateExpr
-	: expr //p:propertyRef { resolve(#p); }
+	: expr [ null ] //p:propertyRef { resolve(#p); }
 	| collectionFunction
 	;
 
@@ -439,7 +460,10 @@ fromClause {
 		// the ouput AST (#fromClause) has not been built yet.
 		prepareFromClauseInputTree(#fromClause_in);
 	}
-	: #(f:FROM { pushFromClause(#fromClause,f); handleClauseStart( FROM ); } fromElementList )
+	: #(f:FROM { pushFromClause(#fromClause,f); handleClauseStart( FROM ); } fromElementList ) {
+		finishFromClause( #f );
+		handleClauseEnd();
+	}
 	;
 
 fromElementList {
@@ -530,6 +554,7 @@ withClause
 	// rule during recognition...
 	: #(w:WITH { handleClauseStart( WITH ); } b:logicalExpr ) {
 		#withClause = #(w , #b);
+		handleClauseEnd();
 	}
 	;
 
@@ -537,6 +562,7 @@ whereClause
 	: #(w:WHERE { handleClauseStart( WHERE ); } b:logicalExpr ) {
 		// Use the *output* AST for the boolean expression!
 		#whereClause = #(w , #b);
+		handleClauseEnd();
 	}
 	;
 
@@ -548,36 +574,37 @@ logicalExpr
 	;
 
 // TODO: Add any other comparison operators here.
+// We pass through the comparisonExpr AST to the expressions so that joins can be avoided for EQ/IN/NULLNESS
 comparisonExpr
 	:
-	( #(EQ exprOrSubquery exprOrSubquery)
-	| #(NE exprOrSubquery exprOrSubquery)
-	| #(LT exprOrSubquery exprOrSubquery)
-	| #(GT exprOrSubquery exprOrSubquery)
-	| #(LE exprOrSubquery exprOrSubquery)
-	| #(GE exprOrSubquery exprOrSubquery)
-	| #(LIKE exprOrSubquery expr ( #(ESCAPE expr) )? )
-	| #(NOT_LIKE exprOrSubquery expr ( #(ESCAPE expr) )? )
-	| #(BETWEEN exprOrSubquery exprOrSubquery exprOrSubquery)
-	| #(NOT_BETWEEN exprOrSubquery exprOrSubquery exprOrSubquery)
-	| #(IN exprOrSubquery inRhs )
-	| #(NOT_IN exprOrSubquery inRhs )
-	| #(IS_NULL exprOrSubquery)
-	| #(IS_NOT_NULL exprOrSubquery)
-//	| #(IS_TRUE expr)
-//	| #(IS_FALSE expr)
-	| #(EXISTS ( expr | collectionFunctionOrSubselect ) )
+	( #(EQ exprOrSubquery [ currentAST.root ] exprOrSubquery [ currentAST.root ])
+	| #(NE exprOrSubquery [ currentAST.root ] exprOrSubquery [ currentAST.root ])
+	| #(LT exprOrSubquery [ null ] exprOrSubquery [ null ])
+	| #(GT exprOrSubquery [ null ] exprOrSubquery [ null ])
+	| #(LE exprOrSubquery [ null ] exprOrSubquery [ null ])
+	| #(GE exprOrSubquery [ null ] exprOrSubquery [ null ])
+	| #(LIKE exprOrSubquery [ null ] expr [ null ] ( #(ESCAPE expr [ null ]) )? )
+	| #(NOT_LIKE exprOrSubquery [ null ] expr [ null ] ( #(ESCAPE expr [ null ]) )? )
+	| #(BETWEEN exprOrSubquery [ null ] exprOrSubquery [ null ] exprOrSubquery [ null ])
+	| #(NOT_BETWEEN exprOrSubquery [ null ] exprOrSubquery [ null ] exprOrSubquery [ null ])
+	| #(IN exprOrSubquery [ currentAST.root ] inRhs [ currentAST.root ] )
+	| #(NOT_IN exprOrSubquery [ currentAST.root ] inRhs [ currentAST.root ] )
+	| #(IS_NULL exprOrSubquery [ currentAST.root ])
+	| #(IS_NOT_NULL exprOrSubquery [ currentAST.root ])
+//	| #(IS_TRUE expr [ null ])
+//	| #(IS_FALSE expr [ null ])
+	| #(EXISTS ( expr [ null ] | collectionFunctionOrSubselect ) )
 	) {
 	    prepareLogicOperator( #comparisonExpr );
 	}
 	;
 
-inRhs
-	: #(IN_LIST ( collectionFunctionOrSubselect | ( (expr)* ) ) )
+inRhs [ AST predicateNode ]
+	: #(IN_LIST ( collectionFunctionOrSubselect | ( (expr [ predicateNode ])* ) ) )
 	;
 
-exprOrSubquery
-	: expr
+exprOrSubquery [ AST predicateNode ]
+	: expr [ predicateNode ]
 	| query
 	| #(ANY collectionFunctionOrSubselect)
 	| #(ALL collectionFunctionOrSubselect)
@@ -589,55 +616,55 @@ collectionFunctionOrSubselect
 	| query
 	;
 	
-expr
-	: ae:addrExpr [ true ] { resolve(#ae); }	// Resolve the top level 'address expression'
-	| #( VECTOR_EXPR (expr)* )
+expr [ AST predicateNode ]
+	: ae:addrExpr [ true ] { resolve(#ae, predicateNode); }	// Resolve the top level 'address expression'
+	| #( VECTOR_EXPR (expr [ predicateNode ])* )
 	| constant
-	| arithmeticExpr
+	| arithmeticExpr [ predicateNode ]
 	| functionCall							// Function call, not in the SELECT clause.
 	| parameter
 	| count										// Count, not in the SELECT clause.
 	;
 
-arithmeticExpr
-    : #(PLUS exprOrSubquery exprOrSubquery)         { prepareArithmeticOperator( #arithmeticExpr ); }
-    | #(MINUS exprOrSubquery exprOrSubquery)        { prepareArithmeticOperator( #arithmeticExpr ); }
-    | #(DIV exprOrSubquery exprOrSubquery)          { prepareArithmeticOperator( #arithmeticExpr ); }
-    | #(MOD exprOrSubquery exprOrSubquery)          { prepareArithmeticOperator( #arithmeticExpr ); }
-    | #(STAR exprOrSubquery exprOrSubquery)         { prepareArithmeticOperator( #arithmeticExpr ); }
-//	| #(CONCAT expr (expr)+ )   { prepareArithmeticOperator( #arithmeticExpr ); }
-	| #(UNARY_MINUS expr)       { prepareArithmeticOperator( #arithmeticExpr ); }
-	| caseExpr
+arithmeticExpr [ AST predicateNode ]
+    : #(PLUS exprOrSubquery [ null ] exprOrSubquery [ null ])         { prepareArithmeticOperator( #arithmeticExpr ); }
+    | #(MINUS exprOrSubquery [ null ] exprOrSubquery [ null ])        { prepareArithmeticOperator( #arithmeticExpr ); }
+    | #(DIV exprOrSubquery [ null ] exprOrSubquery [ null ])          { prepareArithmeticOperator( #arithmeticExpr ); }
+    | #(MOD exprOrSubquery [ null ] exprOrSubquery [ null ])          { prepareArithmeticOperator( #arithmeticExpr ); }
+    | #(STAR exprOrSubquery [ null ] exprOrSubquery [ null ])         { prepareArithmeticOperator( #arithmeticExpr ); }
+//	| #(CONCAT expr [ null ] (expr [ null ])+ )   { prepareArithmeticOperator( #arithmeticExpr ); }
+	| #(UNARY_MINUS expr [ null ])       { prepareArithmeticOperator( #arithmeticExpr ); }
+	| caseExpr [ predicateNode ]
 	;
 
-caseExpr
-	: simpleCaseExpression
-	| searchedCaseExpression
+caseExpr [ AST predicateNode ]
+	: simpleCaseExpression [ predicateNode ]
+	| searchedCaseExpression [ predicateNode ]
 	;
 
-expressionOrSubQuery
-	: expr
+expressionOrSubQuery [ AST predicateNode ]
+	: expr [ predicateNode ]
 	| query
 	;
 
-simpleCaseExpression
-	: #(CASE2 {inCase=true;} expressionOrSubQuery (simpleCaseWhenClause)+ (elseClause)?) {inCase=false;}
+simpleCaseExpression [ AST predicateNode ]
+	: #(CASE2 {inCase=true;} expressionOrSubQuery [ currentAST.root ] (simpleCaseWhenClause [ currentAST.root, predicateNode ])+ (elseClause [ predicateNode ])?) {inCase=false;}
 	;
 
-simpleCaseWhenClause
-	: #(WHEN expressionOrSubQuery expressionOrSubQuery)
+simpleCaseWhenClause [ AST predicateNode, AST superPredicateNode ]
+	: #(WHEN expressionOrSubQuery [ predicateNode ] expressionOrSubQuery [ superPredicateNode ])
 	;
 
-elseClause
-	: #(ELSE expressionOrSubQuery)
+elseClause [ AST predicateNode ]
+	: #(ELSE expressionOrSubQuery [ predicateNode ])
 	;
 
-searchedCaseExpression
-	: #(CASE {inCase = true;} (searchedCaseWhenClause)+ (elseClause)?) {inCase = false;}
+searchedCaseExpression [ AST predicateNode ]
+	: #(CASE {inCase = true;} (searchedCaseWhenClause [ predicateNode ])+ (elseClause [ predicateNode ])?) {inCase = false;}
 	;
 
-searchedCaseWhenClause
-	: #(WHEN logicalExpr expressionOrSubQuery)
+searchedCaseWhenClause [ AST predicateNode ]
+	: #(WHEN logicalExpr expressionOrSubQuery [ predicateNode ])
 	;
 
 
@@ -651,11 +678,11 @@ collectionFunction
 	;
 
 functionCall
-	: #(METHOD_CALL  {inFunctionCall=true;} pathAsIdent ( #(EXPR_LIST (exprOrSubquery)* ) )? ) {
+	: #(METHOD_CALL  {inFunctionCall=true;} pathAsIdent ( #(EXPR_LIST (exprOrSubquery [ null ])* ) )? ) {
         processFunction( #functionCall, inSelect );
         inFunctionCall=false;
     }
-    | #(CAST {inFunctionCall=true;} exprOrSubquery pathAsIdent) {
+    | #(CAST {inFunctionCall=true;} exprOrSubquery [ null ] pathAsIdent) {
     	processCastFunction( #functionCall, inSelect );
         inFunctionCall=false;
     }
@@ -665,7 +692,7 @@ functionCall
 constant
 	: literal
 	| NULL
-	| TRUE { processBoolean(#constant); } 
+	| TRUE { processBoolean(#constant); }
 	| FALSE { processBoolean(#constant); }
 	| JAVA_CONSTANT
 	;
@@ -691,7 +718,7 @@ addrExpr! [ boolean root ]
 		#addrExpr = #(#d, #lhs, #rhs);
 		#addrExpr = lookupProperty(#addrExpr,root,false);
 	}
-	| #(i:INDEX_OP lhs2:addrExprLhs rhs2:expr)	{
+	| #(i:INDEX_OP lhs2:addrExprLhs rhs2:expr [ null ])	{
 		#addrExpr = #(#i, #lhs2, #rhs2);
 		processIndex(#addrExpr);
 	}
@@ -770,7 +797,7 @@ mapComponentReference
     ;
 
 mapPropertyExpression
-    : e:expr {
+    : e:expr [ null ] {
         validateMapPropertyExpression( #e );
     }
     ;

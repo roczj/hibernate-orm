@@ -12,8 +12,9 @@ import java.sql.SQLException;
 
 import org.hibernate.AssertionFailure;
 import org.hibernate.HibernateException;
+import org.hibernate.LockOptions;
 import org.hibernate.engine.spi.QueryParameters;
-import org.hibernate.engine.spi.SessionImplementor;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
 import org.hibernate.internal.CoreLogging;
 import org.hibernate.internal.CoreMessageLogger;
 import org.hibernate.loader.collection.CollectionInitializer;
@@ -39,20 +40,22 @@ public abstract class AbstractLoadPlanBasedCollectionInitializer
 
 	private final QueryableCollection collectionPersister;
 	private final LoadQueryDetails staticLoadQuery;
+	private final LockOptions lockOptions;
 
 	public AbstractLoadPlanBasedCollectionInitializer(
 			QueryableCollection collectionPersister,
 			QueryBuildingParameters buildingParameters) {
 		super( collectionPersister.getFactory() );
 		this.collectionPersister = collectionPersister;
+		this.lockOptions = buildingParameters.getLockMode() != null
+				? new LockOptions( buildingParameters.getLockMode() )
+				: buildingParameters.getLockOptions();
 
 		final FetchStyleLoadPlanBuildingAssociationVisitationStrategy strategy =
 				new FetchStyleLoadPlanBuildingAssociationVisitationStrategy(
 						collectionPersister.getFactory(),
 						buildingParameters.getQueryInfluencers(),
-						buildingParameters.getLockMode() != null
-								? buildingParameters.getLockMode()
-								: buildingParameters.getLockOptions().getLockMode()
+						this.lockOptions.getLockMode()
 		);
 
 		final LoadPlan plan = MetamodelDrivenLoadPlanBuilder.buildRootCollectionLoadPlan( strategy, collectionPersister );
@@ -64,7 +67,7 @@ public abstract class AbstractLoadPlanBasedCollectionInitializer
 	}
 
 	@Override
-	public void initialize(Serializable id, SessionImplementor session)
+	public void initialize(Serializable id, SharedSessionContractImplementor session)
 			throws HibernateException {
 		if ( log.isDebugEnabled() ) {
 			log.debugf( "Loading collection: %s",
@@ -79,6 +82,8 @@ public abstract class AbstractLoadPlanBasedCollectionInitializer
 			qp.setPositionalParameterValues( ids );
 			qp.setCollectionKeys( ids );
 
+			qp.setLockOptions( lockOptions );
+
 			executeLoad(
 					session,
 					qp,
@@ -89,7 +94,7 @@ public abstract class AbstractLoadPlanBasedCollectionInitializer
 			);
 		}
 		catch ( SQLException sqle ) {
-			throw getFactory().getSQLExceptionHelper().convert(
+			throw session.getJdbcServices().getSqlExceptionHelper().convert(
 					sqle,
 					"could not initialize a collection: " +
 							MessageHelper.collectionInfoString( collectionPersister, id, getFactory() ),

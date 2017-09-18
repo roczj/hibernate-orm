@@ -5,9 +5,10 @@
  * See the lgpl.txt file in the root directory or <http://www.gnu.org/licenses/lgpl-2.1.html>.
  */
 package org.hibernate.id.uuid;
+
 import java.util.UUID;
 
-import org.hibernate.engine.spi.SessionImplementor;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
 import org.hibernate.id.UUIDGenerationStrategy;
 import org.hibernate.internal.util.BytesHelper;
 
@@ -43,7 +44,7 @@ public class CustomVersionOneStrategy implements UUIDGenerationStrategy {
 		mostSignificantBits = BytesHelper.asLong( hiBits );
 	}
 	@Override
-	public UUID generateUUID(SessionImplementor session) {
+	public UUID generateUUID(SharedSessionContractImplementor session) {
 		long leastSignificantBits = generateLeastSignificantBits( System.currentTimeMillis() );
 		return new UUID( mostSignificantBits, leastSignificantBits );
 	}

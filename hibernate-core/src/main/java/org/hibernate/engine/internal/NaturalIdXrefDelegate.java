@@ -18,7 +18,7 @@ import org.hibernate.AssertionFailure;
 import org.hibernate.cache.spi.access.NaturalIdRegionAccessStrategy;
 import org.hibernate.engine.spi.PersistenceContext;
 import org.hibernate.engine.spi.SessionFactoryImplementor;
-import org.hibernate.engine.spi.SessionImplementor;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
 import org.hibernate.persister.entity.EntityPersister;
 import org.hibernate.type.Type;
 
@@ -37,7 +37,7 @@ public class NaturalIdXrefDelegate {
 	private static final Logger LOG = Logger.getLogger( NaturalIdXrefDelegate.class );
 
 	private final StatefulPersistenceContext persistenceContext;
-	private final ConcurrentHashMap<EntityPersister, NaturalIdResolutionCache> naturalIdResolutionCacheMap = new ConcurrentHashMap<EntityPersister, NaturalIdResolutionCache>();
+	private final ConcurrentHashMap<EntityPersister, NaturalIdResolutionCache> naturalIdResolutionCacheMap = new ConcurrentHashMap<>();
 
 	/**
 	 * Constructs a NaturalIdXrefDelegate
@@ -53,7 +53,7 @@ public class NaturalIdXrefDelegate {
 	 *
 	 * @return The session
 	 */
-	protected SessionImplementor session() {
+	protected SharedSessionContractImplementor session() {
 		return persistenceContext.getSession();
 	}
 

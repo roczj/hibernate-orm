@@ -10,7 +10,6 @@ import java.io.Serializable;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Map;
-import java.util.Set;
 
 import org.hibernate.HibernateException;
 import org.hibernate.LockMode;
@@ -50,7 +49,7 @@ public interface PersistenceContext {
 	 *
 	 * @return The session.
 	 */
-	public SessionImplementor getSession();
+	public SharedSessionContractImplementor getSession();
 
 	/**
 	 * Retrieve this persistence context's managed load context.
@@ -426,7 +425,7 @@ public interface PersistenceContext {
 
 	/**
 	 * Register a <tt>PersistentCollection</tt> object for an array.
-	 * Associates a holder with an array - MUST be called after loading 
+	 * Associates a holder with an array - MUST be called after loading
 	 * array, since the array instance is not created until endLoad().
 	 */
 	public void addCollectionHolder(PersistentCollection holder);

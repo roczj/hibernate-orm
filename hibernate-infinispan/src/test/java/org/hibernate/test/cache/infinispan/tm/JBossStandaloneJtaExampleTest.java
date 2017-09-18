@@ -22,6 +22,7 @@ import org.hibernate.boot.Metadata;
 import org.hibernate.boot.MetadataSources;
 import org.hibernate.boot.registry.StandardServiceRegistry;
 import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
+import org.hibernate.cache.infinispan.util.InfinispanMessageLogger;
 import org.hibernate.cfg.Environment;
 import org.hibernate.engine.transaction.jta.platform.internal.JBossStandAloneJtaPlatform;
 import org.hibernate.mapping.Collection;
@@ -43,8 +44,6 @@ import org.junit.Test;
 
 import org.infinispan.configuration.cache.ConfigurationBuilder;
 import org.infinispan.transaction.lookup.JBossStandaloneJTAManagerLookup;
-import org.infinispan.util.logging.Log;
-import org.infinispan.util.logging.LogFactory;
 
 import org.jboss.util.naming.NonSerializableFactory;
 
@@ -54,6 +53,7 @@ import org.jnp.server.NamingServer;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 /**
  * This is an example test based on http://community.jboss.org/docs/DOC-14617 that shows how to interact with
@@ -66,7 +66,7 @@ import static org.junit.Assert.assertNull;
  * @since 3.5
  */
 public class JBossStandaloneJtaExampleTest {
-	private static final Log log = LogFactory.getLog(JBossStandaloneJtaExampleTest.class);
+	private static final InfinispanMessageLogger log = InfinispanMessageLogger.Provider.getLog(JBossStandaloneJtaExampleTest.class);
 	private static final JBossStandaloneJTAManagerLookup lookup = new JBossStandaloneJTAManagerLookup();
 	Context ctx;
 	Main jndiServer;
@@ -108,10 +108,12 @@ public class JBossStandaloneJtaExampleTest {
 			ut.begin();
 			try {
 				Session session = sessionFactory.openSession();
-				session.getTransaction().begin();
+				assertTrue(session.getTransaction().isActive());
 				item = new Item("anItem", "An item owned by someone");
 				session.persist(item);
-				session.getTransaction().commit();
+				// IMO the flush should not be necessary, but session.close() does not flush
+				// and the item is not persisted.
+				session.flush();
 				session.close();
 			} catch(Exception e) {
 				ut.setRollbackOnly();
@@ -127,7 +129,7 @@ public class JBossStandaloneJtaExampleTest {
 			ut.begin();
 			try {
 				Session session = sessionFactory.openSession();
-				session.getTransaction().begin();
+				assertTrue(session.getTransaction().isActive());
 				Item found = (Item) session.load(Item.class, item.getId());
 				Statistics stats = session.getSessionFactory().getStatistics();
 				log.info(stats.toString());
@@ -135,7 +137,9 @@ public class JBossStandaloneJtaExampleTest {
 				assertEquals(0, stats.getSecondLevelCacheMissCount());
 				assertEquals(1, stats.getSecondLevelCacheHitCount());
 				session.delete(found);
-				session.getTransaction().commit();
+				// IMO the flush should not be necessary, but session.close() does not flush
+				// and the item is not deleted.
+				session.flush();
 				session.close();
 			} catch(Exception e) {
 				ut.setRollbackOnly();
@@ -151,9 +155,8 @@ public class JBossStandaloneJtaExampleTest {
 			ut.begin();
 			try {
 				Session session = sessionFactory.openSession();
-				session.getTransaction().begin();
+				assertTrue(session.getTransaction().isActive());
 				assertNull(session.get(Item.class, item.getId()));
-				session.getTransaction().commit();
 				session.close();
 			} catch(Exception e) {
 				ut.setRollbackOnly();

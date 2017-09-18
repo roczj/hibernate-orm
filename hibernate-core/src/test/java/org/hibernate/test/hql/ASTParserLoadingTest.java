@@ -6,6 +6,18 @@
  */
 package org.hibernate.test.hql;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.sql.Date;
+import java.sql.Time;
+import java.sql.Timestamp;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+
 import org.hibernate.Hibernate;
 import org.hibernate.HibernateException;
 import org.hibernate.Query;
@@ -35,9 +47,24 @@ import org.hibernate.dialect.SybaseAnywhereDialect;
 import org.hibernate.dialect.SybaseDialect;
 import org.hibernate.dialect.TeradataDialect;
 import org.hibernate.hql.internal.ast.ASTQueryTranslatorFactory;
+import org.hibernate.hql.internal.ast.QuerySyntaxException;
 import org.hibernate.internal.util.StringHelper;
+import org.hibernate.loader.MultipleBagFetchException;
 import org.hibernate.persister.entity.DiscriminatorType;
 import org.hibernate.stat.QueryStatistics;
+import org.hibernate.transform.DistinctRootEntityResultTransformer;
+import org.hibernate.transform.Transformers;
+import org.hibernate.type.ComponentType;
+import org.hibernate.type.ManyToOneType;
+import org.hibernate.type.Type;
+
+import org.hibernate.testing.DialectChecks;
+import org.hibernate.testing.FailureExpected;
+import org.hibernate.testing.RequiresDialect;
+import org.hibernate.testing.RequiresDialectFeature;
+import org.hibernate.testing.SkipForDialect;
+import org.hibernate.testing.TestForIssue;
+import org.hibernate.testing.junit4.BaseCoreFunctionalTestCase;
 import org.hibernate.test.any.IntegerPropertyValue;
 import org.hibernate.test.any.PropertySet;
 import org.hibernate.test.any.PropertyValue;
@@ -47,39 +74,20 @@ import org.hibernate.test.cid.LineItem;
 import org.hibernate.test.cid.LineItem.Id;
 import org.hibernate.test.cid.Order;
 import org.hibernate.test.cid.Product;
-import org.hibernate.testing.DialectChecks;
-import org.hibernate.testing.FailureExpected;
-import org.hibernate.testing.RequiresDialect;
-import org.hibernate.testing.RequiresDialectFeature;
-import org.hibernate.testing.SkipForDialect;
-import org.hibernate.testing.TestForIssue;
-import org.hibernate.testing.junit4.BaseCoreFunctionalTestCase;
-import org.hibernate.transform.DistinctRootEntityResultTransformer;
-import org.hibernate.transform.Transformers;
-import org.hibernate.type.ComponentType;
-import org.hibernate.type.ManyToOneType;
-import org.hibernate.type.Type;
-import org.jboss.logging.Logger;
 import org.junit.Test;
 
-import java.math.BigDecimal;
-import java.math.BigInteger;
-import java.sql.Date;
-import java.sql.Time;
-import java.sql.Timestamp;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
+import org.jboss.logging.Logger;
 
+import static org.hamcrest.CoreMatchers.instanceOf;
 import static org.hibernate.testing.junit4.ExtraAssertions.assertClassAssignability;
+import static org.hibernate.testing.junit4.ExtraAssertions.assertTyping;
+import static org.hibernate.testing.transaction.TransactionUtil.doInHibernate;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -101,7 +109,8 @@ import static org.junit.Assert.fail;
 public class ASTParserLoadingTest extends BaseCoreFunctionalTestCase {
 	private static final Logger log = Logger.getLogger( ASTParserLoadingTest.class );
 
-	private List<Long> createdAnimalIds = new ArrayList<Long>();
+	private List<Long> createdAnimalIds = new ArrayList<>();
+
 	@Override
 	protected boolean isCleanupTestDataRequired() {
 		return true;
@@ -856,6 +865,9 @@ public class ASTParserLoadingTest extends BaseCoreFunctionalTestCase {
 			s.createQuery( "from Animal a where a.offspring.description = 'xyz'" ).list();
 			fail( "illegal collection dereference semantic did not cause failure" );
 		}
+		catch (IllegalArgumentException e) {
+			assertTyping( QueryException.class, e.getCause() );
+		}
 		catch( QueryException qe ) {
             log.trace("expected failure...", qe);
 		}
@@ -863,6 +875,9 @@ public class ASTParserLoadingTest extends BaseCoreFunctionalTestCase {
 		try {
 			s.createQuery( "from Animal a where a.offspring.father.description = 'xyz'" ).list();
 			fail( "illegal collection dereference semantic did not cause failure" );
+		}
+		catch (IllegalArgumentException e) {
+			assertTyping( QueryException.class, e.getCause() );
 		}
 		catch( QueryException qe ) {
             log.trace("expected failure...", qe);
@@ -872,6 +887,9 @@ public class ASTParserLoadingTest extends BaseCoreFunctionalTestCase {
 			s.createQuery( "from Animal a order by a.offspring.description" ).list();
 			fail( "illegal collection dereference semantic did not cause failure" );
 		}
+		catch (IllegalArgumentException e) {
+			assertTyping( QueryException.class, e.getCause() );
+		}
 		catch( QueryException qe ) {
             log.trace("expected failure...", qe);
 		}
@@ -879,6 +897,9 @@ public class ASTParserLoadingTest extends BaseCoreFunctionalTestCase {
 		try {
 			s.createQuery( "from Animal a order by a.offspring.father.description" ).list();
 			fail( "illegal collection dereference semantic did not cause failure" );
+		}
+		catch (IllegalArgumentException e) {
+			assertTyping( QueryException.class, e.getCause() );
 		}
 		catch( QueryException qe ) {
             log.trace("expected failure...", qe);
@@ -1416,6 +1437,30 @@ public class ASTParserLoadingTest extends BaseCoreFunctionalTestCase {
 				.setParameterList( "1", params )
 				.list();
 
+		s.createQuery( "from Human where nickName = ?1 and ( name.first = ?2 or name.last in (?3) )" )
+				.setParameter( "1", "Yogster" )
+				.setParameter( "2", "Yogi"  )
+				.setParameterList( "3", params )
+				.list();
+
+		s.createQuery( "from Human where nickName = ?1 and ( name.first = ?2 or name.last in ?3 )" )
+				.setParameter( "1", "Yogster" )
+				.setParameter( "2", "Yogi" )
+				.setParameterList( "3", params )
+				.list();
+
+		s.createQuery( "from Human where nickName = ?1 or ( name.first = ?2 and name.last in (?3) )" )
+				.setParameter( "1", "Yogster" )
+				.setParameter( "2", "Yogi"  )
+				.setParameterList( "3", params )
+				.list();
+
+		s.createQuery( "from Human where nickName = ?1 or ( name.first = ?2 and name.last in ?3 )" )
+				.setParameter( "1", "Yogster" )
+				.setParameter( "2", "Yogi"  )
+				.setParameterList( "3", params )
+				.list();
+
 		s.getTransaction().commit();
 		s.close();
 	}
@@ -1536,6 +1581,9 @@ public class ASTParserLoadingTest extends BaseCoreFunctionalTestCase {
 			query.list();
 			fail( "query execution should have failed" );
 		}
+		catch (IllegalArgumentException e) {
+			assertTyping( TypeMismatchException.class, e.getCause() );
+		}
 		catch( TypeMismatchException tme ) {
 			// expected behavior
 		}
@@ -1551,6 +1599,9 @@ public class ASTParserLoadingTest extends BaseCoreFunctionalTestCase {
 		try {
 			s.createQuery( "from Human h join fetch h.friends f join fetch f.friends fof" ).list();
 			fail( "failure expected" );
+		}
+		catch (IllegalArgumentException e) {
+			assertTyping( MultipleBagFetchException.class, e.getCause() );
 		}
 		catch( HibernateException e ) {
 			assertTrue( "unexpected failure reason : " + e, e.getMessage().indexOf( "multiple bags" ) > 0 );
@@ -1661,6 +1712,9 @@ public class ASTParserLoadingTest extends BaseCoreFunctionalTestCase {
 		try {
 			s.createQuery( "from Animal a where a.mother in (select m from Animal a1 inner join a1.mother as m join fetch m.mother)" ).list();
 			fail( "fetch join allowed in subquery" );
+		}
+		catch (IllegalArgumentException e) {
+			assertTyping( QueryException.class, e.getCause() );
 		}
 		catch( QueryException expected ) {
 			// expected behavior
@@ -1834,12 +1888,18 @@ public class ASTParserLoadingTest extends BaseCoreFunctionalTestCase {
 			s.createQuery( "select mother from Human a left join fetch a.mother mother" ).list();
 			fail( "invalid fetch semantic allowed!" );
 		}
+		catch (IllegalArgumentException e) {
+			assertTyping( QueryException.class, e.getCause() );
+		}
 		catch( QueryException e ) {
 		}
 
 		try {
 			s.createQuery( "select mother from Human a left join fetch a.mother mother" ).list();
 			fail( "invalid fetch semantic allowed!" );
+		}
+		catch (IllegalArgumentException e) {
+			assertTyping( QueryException.class, e.getCause() );
 		}
 		catch( QueryException e ) {
 		}
@@ -2178,7 +2238,7 @@ public class ASTParserLoadingTest extends BaseCoreFunctionalTestCase {
 		s.flush();
 
 		// Check order via SQL. Numbers are negated in the DB, so second comes first.
-		List listViaSql = s.createSQLQuery("select id from SIMPLE_1 order by negated_num").list();
+		List listViaSql = s.createSQLQuery("select ID from SIMPLE_1 order by negated_num").list();
 		assertEquals( 2, listViaSql.size() );
 		assertEquals( second.getId().longValue(), ((Number) listViaSql.get( 0 )).longValue() );
 		assertEquals( first.getId().longValue(), ((Number) listViaSql.get( 1 )).longValue() );
@@ -2409,11 +2469,11 @@ public class ASTParserLoadingTest extends BaseCoreFunctionalTestCase {
 		a.setDescription("an animal");
 		s.persist(a);
 		String[] aliases1 = s.createQuery("select a.bodyWeight as abw, a.description from Animal a").getReturnAliases();
-		assertEquals( aliases1[0], "abw" );
-		assertEquals(aliases1[1], "1");
+		assertEquals( "abw", aliases1[0] );
+		assertEquals( null, aliases1[1] );
 		String[] aliases2 = s.createQuery("select count(*), avg(a.bodyWeight) as avg from Animal a").getReturnAliases();
-		assertEquals( aliases2[0], "0" );
-		assertEquals(aliases2[1], "avg");
+		assertEquals( null, aliases2[0] );
+		assertEquals( "avg", aliases2[1] );
 		s.delete(a);
 		t.commit();
 		s.close();
@@ -2859,7 +2919,7 @@ public class ASTParserLoadingTest extends BaseCoreFunctionalTestCase {
 		Transaction txn = session.beginTransaction();
 
 		for ( Long createdAnimalId : createdAnimalIds ) {
-			Animal animal = (Animal) session.load( Animal.class, createdAnimalId );
+			Animal animal = session.load( Animal.class, createdAnimalId );
 			session.delete( animal );
 		}
 
@@ -3461,21 +3521,33 @@ public class ASTParserLoadingTest extends BaseCoreFunctionalTestCase {
 		try {
 			getSelectNewQuery( session ).setResultTransformer(Transformers.ALIAS_TO_ENTITY_MAP).list();
 			fail("'select new' together with a resulttransformer should result in error!");
-		} catch(QueryException he) {
+		}
+		catch (IllegalArgumentException e) {
+			assertTyping( QueryException.class, e.getCause() );
+		}
+		catch(QueryException he) {
 			assertTrue(he.getMessage().indexOf("ResultTransformer")==0);
 		}
 
 		try {
 			getSelectNewQuery( session ).setResultTransformer(Transformers.ALIAS_TO_ENTITY_MAP).iterate();
 			fail("'select new' together with a resulttransformer should result in error!");
-		} catch(HibernateException he) {
+		}
+		catch (IllegalArgumentException e) {
+			assertTyping( QueryException.class, e.getCause() );
+		}
+		catch(HibernateException he) {
 			assertTrue(he.getMessage().indexOf("ResultTransformer")==0);
 		}
 
 		try {
 			getSelectNewQuery( session ).setResultTransformer(Transformers.ALIAS_TO_ENTITY_MAP).scroll();
 			fail("'select new' together with a resulttransformer should result in error!");
-		} catch(HibernateException he) {
+		}
+		catch (IllegalArgumentException e) {
+			assertTyping( QueryException.class, e.getCause() );
+		}
+		catch(HibernateException he) {
 			assertTrue(he.getMessage().indexOf("ResultTransformer")==0);
 		}
 		t.commit();
@@ -3598,7 +3670,6 @@ public class ASTParserLoadingTest extends BaseCoreFunctionalTestCase {
 
 		assertTrue( "Incorrect result size", sr.next() );
 		assertTrue( "Incorrect return type", sr.get(0) instanceof Map );
-		assertFalse( session.contains( sr.get( 0 ) ) );
 		sr.close();
 
 		t.commit();
@@ -3715,6 +3786,28 @@ public class ASTParserLoadingTest extends BaseCoreFunctionalTestCase {
 
 		t.commit();
 		session.close();
+	}
+
+	@Test
+	@TestForIssue( jiraKey = "HHH-11942" )
+	public void testOrderByExtraParenthesis() throws Exception {
+		try {
+			doInHibernate( this::sessionFactory, session -> {
+				session.createQuery(
+					"select a from Product a " +
+					"where " +
+					"coalesce(a.description, :description) = :description ) " +
+					"order by a.description ", Product.class)
+				.setParameter( "description", "desc" )
+				.getResultList();
+				fail("Should have thrown exception");
+			} );
+		}
+		catch (IllegalArgumentException e) {
+			final Throwable cause = e.getCause();
+			assertThat( cause, instanceOf( QuerySyntaxException.class ) );
+			assertTrue( cause.getMessage().contains( "expecting EOF, found ')'" ) );
+		}
 	}
 
 	@RequiresDialectFeature(

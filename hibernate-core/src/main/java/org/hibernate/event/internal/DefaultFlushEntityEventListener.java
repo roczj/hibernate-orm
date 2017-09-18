@@ -352,7 +352,7 @@ public class DefaultFlushEntityEventListener implements FlushEntityEventListener
 	}
 
 	/**
-	 * Convience method to retreive an entities next version value
+	 * Convenience method to retrieve an entities next version value
 	 */
 	private Object getNextVersion(FlushEntityEvent event) throws HibernateException {
 
@@ -647,7 +647,7 @@ public class DefaultFlushEntityEventListener implements FlushEntityEventListener
 			LOG.tracev(
 					"Found dirty properties [{0}] : {1}",
 					MessageHelper.infoString( persister.getEntityName(), id ),
-					dirtyPropertyNames
+					Arrays.toString( dirtyPropertyNames )
 			);
 		}
 	}

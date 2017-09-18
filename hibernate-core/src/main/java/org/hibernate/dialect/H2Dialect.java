@@ -6,6 +6,9 @@
  */
 package org.hibernate.dialect;
 
+import java.sql.SQLException;
+import java.sql.Types;
+
 import org.hibernate.JDBCException;
 import org.hibernate.PessimisticLockException;
 import org.hibernate.boot.TempTableDdlTransactionHandling;
@@ -36,10 +39,8 @@ import org.hibernate.tool.schema.extract.internal.SequenceInformationExtractorH2
 import org.hibernate.tool.schema.extract.internal.SequenceInformationExtractorLegacyImpl;
 import org.hibernate.tool.schema.extract.spi.SequenceInformationExtractor;
 import org.hibernate.type.StandardBasicTypes;
-import org.jboss.logging.Logger;
 
-import java.sql.SQLException;
-import java.sql.Types;
+import org.jboss.logging.Logger;
 
 /**
  * A dialect compatible with the H2 database.
@@ -116,7 +117,8 @@ public class H2Dialect extends Dialect {
 		registerColumnType( Types.FLOAT, "float" );
 		registerColumnType( Types.INTEGER, "integer" );
 		registerColumnType( Types.LONGVARBINARY, "longvarbinary" );
-		registerColumnType( Types.LONGVARCHAR, "longvarchar" );
+		// H2 does define "longvarchar", but it is a simple alias to "varchar"
+		registerColumnType( Types.LONGVARCHAR, String.format( "varchar(%d)", Integer.MAX_VALUE ) );
 		registerColumnType( Types.REAL, "real" );
 		registerColumnType( Types.SMALLINT, "smallint" );
 		registerColumnType( Types.TINYINT, "tinyint" );

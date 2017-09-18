@@ -15,10 +15,9 @@ import org.hibernate.boot.model.naming.Identifier;
 import org.hibernate.boot.model.relational.Database;
 import org.hibernate.boot.model.relational.QualifiedName;
 import org.hibernate.boot.model.relational.QualifiedNameParser;
-import org.hibernate.cfg.Environment;
 import org.hibernate.dialect.Dialect;
 import org.hibernate.engine.jdbc.env.spi.JdbcEnvironment;
-import org.hibernate.engine.spi.SessionImplementor;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
 import org.hibernate.id.BulkInsertionCapableIdentifierGenerator;
 import org.hibernate.id.Configurable;
 import org.hibernate.id.PersistentIdentifierGenerator;
@@ -347,15 +346,11 @@ public class SequenceStyleGenerator
 	 * @return The optimizer strategy (name)
 	 */
 	protected String determineOptimizationStrategy(Properties params, int incrementSize) {
-		// if the increment size is greater than one, we prefer pooled optimization; but we first
-		// need to see if the user prefers POOL or POOL_LO...
-		final String defaultPooledOptimizerStrategy = ConfigurationHelper.getBoolean( Environment.PREFER_POOLED_VALUES_LO, params, false )
-				? StandardOptimizerDescriptor.POOLED_LO.getExternalName()
-				: StandardOptimizerDescriptor.POOLED.getExternalName();
-		final String defaultOptimizerStrategy = incrementSize <= 1
-				? StandardOptimizerDescriptor.NONE.getExternalName()
-				: defaultPooledOptimizerStrategy;
-		return ConfigurationHelper.getString( OPT_PARAM, params, defaultOptimizerStrategy );
+		return ConfigurationHelper.getString(
+				OPT_PARAM,
+				params,
+				OptimizerFactory.determineImplicitOptimizerName( incrementSize, params )
+		);
 	}
 
 	/**
@@ -367,15 +362,35 @@ public class SequenceStyleGenerator
 	 * @return The adjusted increment size.
 	 */
 	protected int determineAdjustedIncrementSize(String optimizationStrategy, int incrementSize) {
-		if ( incrementSize > 1 && StandardOptimizerDescriptor.NONE.getExternalName().equals( optimizationStrategy ) ) {
-			LOG.honoringOptimizerSetting(
-					StandardOptimizerDescriptor.NONE.getExternalName(),
-					INCREMENT_PARAM,
-					incrementSize
-			);
-			incrementSize = 1;
+		final int resolvedIncrementSize;
+		if ( Math.abs( incrementSize ) > 1 &&
+				StandardOptimizerDescriptor.NONE.getExternalName().equals( optimizationStrategy ) ) {
+			if ( incrementSize < -1 ) {
+				resolvedIncrementSize = -1;
+				LOG.honoringOptimizerSetting(
+						StandardOptimizerDescriptor.NONE.getExternalName(),
+						INCREMENT_PARAM,
+						incrementSize,
+						"negative",
+						resolvedIncrementSize
+				);
+			}
+			else {
+				// incrementSize > 1
+				resolvedIncrementSize = 1;
+				LOG.honoringOptimizerSetting(
+						StandardOptimizerDescriptor.NONE.getExternalName(),
+						INCREMENT_PARAM,
+						incrementSize,
+						"positive",
+						resolvedIncrementSize
+				);
+			}
 		}
-		return incrementSize;
+		else {
+			resolvedIncrementSize = incrementSize;
+		}
+		return resolvedIncrementSize;
 	}
 
 	/**
@@ -401,19 +416,39 @@ public class SequenceStyleGenerator
 			int incrementSize) {
 		final boolean useSequence = jdbcEnvironment.getDialect().supportsSequences() && !forceTableUse;
 		if ( useSequence ) {
-			return new SequenceStructure( jdbcEnvironment, sequenceName, initialValue, incrementSize, type.getReturnedClass() );
+			return buildSequenceStructure( type, params, jdbcEnvironment, sequenceName, initialValue, incrementSize );
 		}
 		else {
-			final Identifier valueColumnName = determineValueColumnName( params, jdbcEnvironment );
-			return new TableStructure( jdbcEnvironment, sequenceName, valueColumnName, initialValue, incrementSize, type.getReturnedClass() );
+			return buildTableStructure( type, params, jdbcEnvironment, sequenceName, initialValue, incrementSize );
 		}
+	}
+
+	protected DatabaseStructure buildSequenceStructure(
+			Type type,
+			Properties params,
+			JdbcEnvironment jdbcEnvironment,
+			QualifiedName sequenceName,
+			int initialValue,
+			int incrementSize) {
+		return new SequenceStructure( jdbcEnvironment, sequenceName, initialValue, incrementSize, type.getReturnedClass() );
+	}
+
+	protected DatabaseStructure buildTableStructure(
+			Type type,
+			Properties params,
+			JdbcEnvironment jdbcEnvironment,
+			QualifiedName sequenceName,
+			int initialValue,
+			int incrementSize) {
+		final Identifier valueColumnName = determineValueColumnName( params, jdbcEnvironment );
+		return new TableStructure( jdbcEnvironment, sequenceName, valueColumnName, initialValue, incrementSize, type.getReturnedClass() );
 	}
 
 
 	// IdentifierGenerator implementation ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 	@Override
-	public Serializable generate(SessionImplementor session, Object object) throws HibernateException {
+	public Serializable generate(SharedSessionContractImplementor session, Object object) throws HibernateException {
 		return optimizer.generate( databaseStructure.buildCallback( session ) );
 	}
 

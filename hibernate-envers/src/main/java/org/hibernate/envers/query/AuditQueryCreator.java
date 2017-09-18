@@ -7,6 +7,7 @@
 package org.hibernate.envers.query;
 
 import org.hibernate.envers.boot.internal.EnversService;
+import org.hibernate.envers.exception.NotAuditedException;
 import org.hibernate.envers.internal.reader.AuditReaderImplementor;
 import org.hibernate.envers.query.internal.impl.EntitiesAtRevisionQuery;
 import org.hibernate.envers.query.internal.impl.EntitiesModifiedAtRevisionQuery;
@@ -20,6 +21,7 @@ import static org.hibernate.envers.internal.tools.EntityTools.getTargetClassIfPr
  * @author Adam Warski (adam at warski dot org)
  * @author HernпїЅn Chanfreau
  * @author Lukasz Antoniak (lukasz dot antoniak at gmail dot com)
+ * @author Chris Cranford
  */
 public class AuditQueryCreator {
 	private final EnversService enversService;
@@ -45,6 +47,7 @@ public class AuditQueryCreator {
 		checkNotNull( revision, "Entity revision" );
 		checkPositive( revision, "Entity revision" );
 		c = getTargetClassIfProxied( c );
+		checkEntityAudited( c.getName() );
 		return new EntitiesAtRevisionQuery( enversService, auditReaderImplementor, c, revision, false );
 	}
 
@@ -82,6 +85,7 @@ public class AuditQueryCreator {
 		checkNotNull( revision, "Entity revision" );
 		checkPositive( revision, "Entity revision" );
 		c = getTargetClassIfProxied( c );
+		checkEntityAudited( entityName );
 		return new EntitiesAtRevisionQuery(
 				enversService,
 				auditReaderImplementor,
@@ -111,6 +115,7 @@ public class AuditQueryCreator {
 		checkNotNull( revision, "Entity revision" );
 		checkPositive( revision, "Entity revision" );
 		c = getTargetClassIfProxied( c );
+		checkEntityAudited( entityName );
 		return new EntitiesModifiedAtRevisionQuery( enversService, auditReaderImplementor, c, entityName, revision );
 	}
 
@@ -132,6 +137,7 @@ public class AuditQueryCreator {
 		checkNotNull( revision, "Entity revision" );
 		checkPositive( revision, "Entity revision" );
 		c = getTargetClassIfProxied( c );
+		checkEntityAudited( c.getName() );
 		return new EntitiesModifiedAtRevisionQuery( enversService, auditReaderImplementor, c, revision );
 	}
 
@@ -147,7 +153,7 @@ public class AuditQueryCreator {
 	 * Additional conditions that the results must satisfy may be specified.
 	 *
 	 * @param c Class of the entities for which to query.
-	 * @param selectEntitiesOnly If true, instead of a list of three-element arrays, a list of entites will be
+	 * @param selectEntitiesOnly If true, instead of a list of three-element arrays, a list of entities will be
 	 * returned as a result of executing this query.
 	 * @param selectDeletedEntities If true, also revisions where entities were deleted will be returned. The additional
 	 * entities will have revision type "delete", and contain no data (all fields null), except for the id field.
@@ -159,6 +165,7 @@ public class AuditQueryCreator {
 	 */
 	public AuditQuery forRevisionsOfEntity(Class<?> c, boolean selectEntitiesOnly, boolean selectDeletedEntities) {
 		c = getTargetClassIfProxied( c );
+		checkEntityAudited( c.getName() );
 		return new RevisionsOfEntityQuery(
 				enversService,
 				auditReaderImplementor,
@@ -181,7 +188,7 @@ public class AuditQueryCreator {
 	 *
 	 * @param c Class of the entities for which to query.
 	 * @param entityName Name of the entity (if can't be guessed basing on the {@code c}).
-	 * @param selectEntitiesOnly If true, instead of a list of three-element arrays, a list of entites will be
+	 * @param selectEntitiesOnly If true, instead of a list of three-element arrays, a list of entities will be
 	 * returned as a result of executing this query.
 	 * @param selectDeletedEntities If true, also revisions where entities were deleted will be returned. The additional
 	 * entities will have revision type "delete", and contain no data (all fields null), except for the id field.
@@ -197,6 +204,7 @@ public class AuditQueryCreator {
 			boolean selectEntitiesOnly,
 			boolean selectDeletedEntities) {
 		c = getTargetClassIfProxied( c );
+		checkEntityAudited( entityName );
 		return new RevisionsOfEntityQuery(
 				enversService,
 				auditReaderImplementor,
@@ -205,5 +213,14 @@ public class AuditQueryCreator {
 				selectEntitiesOnly,
 				selectDeletedEntities
 		);
+	}
+
+	private void checkEntityAudited(String entityName) {
+		if ( !auditReaderImplementor.isEntityNameAudited( entityName ) ) {
+			throw new NotAuditedException(
+					entityName,
+					"Cannot query audit history on a non-audited entity [" + entityName + "]."
+			);
+		}
 	}
 }

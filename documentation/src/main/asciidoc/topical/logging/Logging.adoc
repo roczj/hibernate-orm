@@ -22,6 +22,8 @@ classes that indicate one of the above "providers" being available.  It does thi
 for example,  if you have both JBoss LogManager and Slf4j available your classpath then JBoss LogManager will be used
 as it has the "higher precedence".
 
+NOTE: Slf4j will only be auto-selected if Logback is in use.
+
 This can sometimes lead to an unwanted logging set up to be used.  In such cases, JBoss Logging provides for you to
 tell it specifically which provider to use and circumvent the discovery process just described.  It allows 2 different
 mechanisms for this:
@@ -56,7 +58,7 @@ JDK Logging would be used if none of the other framework jars are available.
 == Log Categories of Interest
 
 It is recommended that you familiarize yourself with the log messages sent from Hibernate.  A lot of work has been put
-into making the Hibernate loggiong as detailed as possible, without making it unreadable.  It is an essential
+into making the Hibernate logging as detailed as possible, without making it unreadable.  It is an essential
 troubleshooting device.  Some log categories of particular interest include:
 
 .Hibernate Log Categories of Interest

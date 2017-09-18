@@ -42,7 +42,7 @@ import org.hibernate.mapping.PersistentClass;
 import org.hibernate.mapping.Property;
 import org.hibernate.mapping.RootClass;
 import org.hibernate.mapping.SimpleValue;
-import org.hibernate.resource.transaction.TransactionCoordinator;
+import org.hibernate.resource.transaction.spi.TransactionCoordinator;
 import org.hibernate.type.BlobType;
 import org.hibernate.type.ClobType;
 import org.hibernate.type.NClobType;
@@ -52,6 +52,7 @@ import org.hibernate.testing.BeforeClassOnce;
 import org.hibernate.testing.OnExpectedFailure;
 import org.hibernate.testing.OnFailure;
 import org.hibernate.testing.cache.CachingRegionFactory;
+import static org.hibernate.testing.transaction.TransactionUtil.doInHibernate;
 import org.junit.After;
 import org.junit.Before;
 
@@ -157,6 +158,7 @@ public class BaseNonConfigCoreFunctionalTestCase extends BaseUnitTestCase {
 
 	protected final StandardServiceRegistryBuilder constructStandardServiceRegistryBuilder() {
 		final BootstrapServiceRegistryBuilder bsrb = new BootstrapServiceRegistryBuilder();
+		bsrb.applyClassLoader( getClass().getClassLoader() );
 		// by default we do not share the BootstrapServiceRegistry nor the StandardServiceRegistry,
 		// so we want the BootstrapServiceRegistry to be automatically closed when the
 		// StandardServiceRegistry is closed.
@@ -295,7 +297,7 @@ public class BaseNonConfigCoreFunctionalTestCase extends BaseUnitTestCase {
 	protected void afterMetadataSourcesApplied(MetadataSources metadataSources) {
 	}
 
-	private void initialize(MetadataBuilder metadataBuilder) {
+	protected void initialize(MetadataBuilder metadataBuilder) {
 		metadataBuilder.enableNewIdentifierGeneratorSupport( true );
 		metadataBuilder.applyImplicitNamingStrategy( ImplicitNamingStrategyLegacyJpaImpl.INSTANCE );
 	}
@@ -481,11 +483,9 @@ public class BaseNonConfigCoreFunctionalTestCase extends BaseUnitTestCase {
 	}
 
 	protected void cleanupTestData() throws Exception {
-		Session s = openSession();
-		s.beginTransaction();
-		s.createQuery( "delete from java.lang.Object" ).executeUpdate();
-		s.getTransaction().commit();
-		s.close();
+		doInHibernate(this::sessionFactory, s -> {
+			s.createQuery("delete from java.lang.Object").executeUpdate();
+		});
 	}
 
 

@@ -21,7 +21,7 @@ import org.hibernate.bytecode.enhance.spi.interceptor.Helper.Consumer;
 import org.hibernate.bytecode.enhance.spi.interceptor.Helper.LazyInitializationWork;
 import org.hibernate.engine.spi.PersistentAttributeInterceptor;
 import org.hibernate.engine.spi.SelfDirtinessTracker;
-import org.hibernate.engine.spi.SessionImplementor;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
 import org.hibernate.engine.spi.Status;
 import org.hibernate.persister.entity.EntityPersister;
 
@@ -42,15 +42,14 @@ public class LazyAttributeLoadingInterceptor
 
 	private Set<String> initializedLazyFields;
 
-	private transient SessionImplementor session;
+	private transient SharedSessionContractImplementor session;
 	private boolean allowLoadOutsideTransaction;
 	private String sessionFactoryUuid;
-
 
 	public LazyAttributeLoadingInterceptor(
 			String entityName,
 			Set<String> lazyFields,
-			SessionImplementor session) {
+			SharedSessionContractImplementor session) {
 		this.entityName = entityName;
 		this.lazyFields = lazyFields;
 
@@ -59,17 +58,26 @@ public class LazyAttributeLoadingInterceptor
 
 	protected final Object intercept(Object target, String attributeName, Object value) {
 		if ( !isAttributeLoaded( attributeName ) ) {
-			return loadAttribute( target, attributeName );
+			Object loadedValue = fetchAttribute( target, attributeName );
+			attributeInitialized( attributeName );
+			return loadedValue;
 		}
 		return value;
 	}
 
-	private Object loadAttribute(final Object target, final String attributeName) {
+	/**
+	 * Fetches the lazy attribute. The attribute does not get associated with the entity. (To be used by hibernate methods)
+	 */
+	public Object fetchAttribute(final Object target, final String attributeName) {
+		return loadAttribute( target, attributeName );
+	}
+
+	protected Object loadAttribute(final Object target, final String attributeName) {
 		return new Helper( this ).performWork(
 				new LazyInitializationWork() {
 					@Override
-					public Object doWork(SessionImplementor session, boolean isTemporarySession) {
-						final EntityPersister persister = session.getFactory().getEntityPersister( getEntityName() );
+					public Object doWork(SharedSessionContractImplementor session, boolean isTemporarySession) {
+						final EntityPersister persister = session.getFactory().getMetamodel().entityPersister( getEntityName() );
 
 						if ( isTemporarySession ) {
 							final Serializable id = persister.getIdentifier( target, null );
@@ -117,7 +125,7 @@ public class LazyAttributeLoadingInterceptor
 		);
 	}
 
-	public final void setSession(SessionImplementor session) {
+	public final void setSession(SharedSessionContractImplementor session) {
 		this.session = session;
 		if ( session != null && !allowLoadOutsideTransaction ) {
 			this.allowLoadOutsideTransaction = session.getFactory().getSessionFactoryOptions().isInitializeLazyStateOutsideTransactionsEnabled();
@@ -173,6 +181,7 @@ public class LazyAttributeLoadingInterceptor
 			CollectionTracker tracker = ( (SelfDirtinessTracker) target ).$$_hibernate_getCollectionTracker();
 			if ( tracker == null ) {
 				( (SelfDirtinessTracker) target ).$$_hibernate_clearDirtyAttributes();
+				tracker = ( (SelfDirtinessTracker) target ).$$_hibernate_getCollectionTracker();
 			}
 			tracker.add( fieldName, ( (Collection) value ).size() );
 		}
@@ -296,7 +305,7 @@ public class LazyAttributeLoadingInterceptor
 	}
 
 	@Override
-	public SessionImplementor getLinkedSession() {
+	public SharedSessionContractImplementor getLinkedSession() {
 		return session;
 	}
 

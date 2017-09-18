@@ -22,7 +22,6 @@ import org.hibernate.engine.OptimisticLockStyle;
 import org.hibernate.engine.spi.ExecuteUpdateResultCheckStyle;
 import org.hibernate.engine.spi.Mapping;
 import org.hibernate.internal.FilterConfiguration;
-import org.hibernate.internal.util.ReflectHelper;
 import org.hibernate.internal.util.StringHelper;
 import org.hibernate.internal.util.collections.EmptyIterator;
 import org.hibernate.internal.util.collections.JoinedIterator;
@@ -383,11 +382,13 @@ public abstract class PersistentClass implements AttributeContainer, Serializabl
 	}
 
 	/**
-	 * Build an iterator of properties which are "referenceable".
-	 *
-	 * @return The property iterator.
+	 * Build an iterator of properties which may be referenced in association mappings.
+	 * <p>
+	 * Includes properties defined in superclasses of the mapping inheritance.
+	 * Includes all properties defined as part of a join.
 	 *
 	 * @see #getReferencedProperty for a discussion of "referenceable"
+	 * @return The referenceable property iterator.
 	 */
 	public Iterator getReferenceablePropertyIterator() {
 		return getPropertyClosureIterator();
@@ -397,7 +398,7 @@ public abstract class PersistentClass implements AttributeContainer, Serializabl
 	 * Given a property path, locate the appropriate referenceable property reference.
 	 * <p/>
 	 * A referenceable property is a property  which can be a target of a foreign-key
-	 * mapping (an identifier or explcitly named in a property-ref).
+	 * mapping (e.g. {@code @ManyToOne}, {@code @OneToOne}).
 	 *
 	 * @param propertyPath The property path to resolve into a property reference.
 	 *
@@ -496,6 +497,73 @@ public abstract class PersistentClass implements AttributeContainer, Serializabl
 		else {
 			return getProperty( propertyName, iter );
 		}
+	}
+
+	/**
+	 * Check to see if this PersistentClass defines a property with the given name.
+	 *
+	 * @param name The property name to check
+	 *
+	 * @return {@code true} if a property with that name exists; {@code false} if not
+	 */
+	@SuppressWarnings("WeakerAccess")
+	public boolean hasProperty(String name) {
+		final Property identifierProperty = getIdentifierProperty();
+		if ( identifierProperty != null && identifierProperty.getName().equals( name ) ) {
+			return true;
+		}
+
+		final Iterator itr = getPropertyClosureIterator();
+		while ( itr.hasNext() ) {
+			final Property property = (Property) itr.next();
+			if ( property.getName().equals( name ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Check to see if a property with the given name exists in the super hierarchy
+	 * of this PersistentClass.  Does not check this PersistentClass, just up the
+	 * hierarchy
+	 *
+	 * @param name The property name to check
+	 *
+	 * @return {@code true} if a property with that name exists; {@code false} if not
+	 */
+	public boolean isPropertyDefinedInSuperHierarchy(String name) {
+		return getSuperclass() != null && getSuperclass().isPropertyDefinedInHierarchy( name );
+
+	}
+
+	/**
+	 * Check to see if a property with the given name exists in this PersistentClass
+	 * or in any of its super hierarchy.  Unlike {@link #isPropertyDefinedInSuperHierarchy},
+	 * this method does check this PersistentClass
+	 *
+	 * @param name The property name to check
+	 *
+	 * @return {@code true} if a property with that name exists; {@code false} if not
+	 */
+	@SuppressWarnings({"WeakerAccess", "RedundantIfStatement"})
+	public boolean isPropertyDefinedInHierarchy(String name) {
+		if ( hasProperty( name ) ) {
+			return true;
+		}
+
+		if ( getSuperMappedSuperclass() != null
+				&& getSuperMappedSuperclass().isPropertyDefinedInHierarchy( name ) ) {
+			return true;
+		}
+
+		if ( getSuperclass() != null
+				&& getSuperclass().isPropertyDefinedInHierarchy( name ) ) {
+			return true;
+		}
+
+		return false;
 	}
 
 	/**
@@ -620,8 +688,11 @@ public abstract class PersistentClass implements AttributeContainer, Serializabl
 	 * iterator only accounts for "normal" properties (i.e. non-identifier
 	 * properties).
 	 * <p/>
-	 * Differs from {@link #getUnjoinedPropertyIterator} in that the iterator
-	 * we return here will include properties defined as part of a join.
+	 * Differs from {@link #getUnjoinedPropertyIterator} in that the returned iterator
+	 * will include properties defined as part of a join.
+	 * <p/>
+	 * Differs from {@link #getReferenceablePropertyIterator} in that the properties
+	 * defined in superclasses of the mapping inheritance are not included.
 	 *
 	 * @return An iterator over the "normal" properties.
 	 */

@@ -28,11 +28,9 @@ public class CollectionRegionImplTest extends AbstractEntityCollectionRegionTest
 
 	@Override
 	protected void supportedAccessTypeTest(RegionFactory regionFactory, Properties properties) {
-		for (AccessType accessType : AccessType.values()) {
-			CollectionRegion region = regionFactory.buildCollectionRegion(CACHE_NAME, properties, MUTABLE_NON_VERSIONED);
-			assertNotNull(region.buildAccessStrategy(accessType));
-			((InfinispanRegionFactory) regionFactory).getCacheManager().removeCache(CACHE_NAME);
-		}
+		CollectionRegion region = regionFactory.buildCollectionRegion(CACHE_NAME, properties, MUTABLE_NON_VERSIONED);
+		assertNotNull(region.buildAccessStrategy(accessType));
+		((InfinispanRegionFactory) regionFactory).getCacheManager().removeCache(CACHE_NAME);
 	}
 
 	@Override
@@ -48,7 +46,7 @@ public class CollectionRegionImplTest extends AbstractEntityCollectionRegionTest
 	@Override
 	protected void putInRegion(Region region, Object key, Object value) {
 		CollectionRegionAccessStrategy strategy = ((CollectionRegion) region).buildAccessStrategy(AccessType.TRANSACTIONAL);
-		strategy.putFromLoad(null, key, value, System.currentTimeMillis(), new Integer(1));
+		strategy.putFromLoad(null, key, value, region.nextTimestamp(), new Integer(1));
 	}
 
 	@Override

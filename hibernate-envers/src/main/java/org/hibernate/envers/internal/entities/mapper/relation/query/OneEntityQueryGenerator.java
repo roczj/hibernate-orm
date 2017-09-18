@@ -31,7 +31,7 @@ public final class OneEntityQueryGenerator extends AbstractRelationQueryGenerato
 			AuditEntitiesConfiguration verEntCfg, AuditStrategy auditStrategy,
 			String versionsMiddleEntityName, MiddleIdData referencingIdData,
 			boolean revisionTypeInId, MiddleComponentData... componentData) {
-		super( verEntCfg, referencingIdData, revisionTypeInId );
+		super( verEntCfg, referencingIdData, revisionTypeInId, revisionTypeInId );
 
 		/*
 		 * The valid query that we need to create:
@@ -70,7 +70,7 @@ public final class OneEntityQueryGenerator extends AbstractRelationQueryGenerato
 	private QueryBuilder commonQueryPart(String versionsMiddleEntityName) {
 		// SELECT ee FROM middleEntity ee
 		final QueryBuilder qb = new QueryBuilder( versionsMiddleEntityName, MIDDLE_ENTITY_ALIAS );
-		qb.addProjection( null, MIDDLE_ENTITY_ALIAS, false, false );
+		qb.addProjection( null, MIDDLE_ENTITY_ALIAS, null, false );
 		// WHERE
 		// ee.originalId.id_ref_ing = :id_ref_ing
 		referencingIdData.getPrefixedMapper().addNamedIdEqualsToQuery(
@@ -99,7 +99,7 @@ public final class OneEntityQueryGenerator extends AbstractRelationQueryGenerato
 				originalIdPropertyName, MIDDLE_ENTITY_ALIAS, inclusive, componentData
 		);
 		// ee.revision_type != DEL
-		rootParameters.addWhereWithNamedParam( getRevisionTypePath(), "!=", DEL_REVISION_TYPE_PARAMETER );
+		rootParameters.addWhereWithNamedParam( getElementRevisionTypePath(), "!=", DEL_REVISION_TYPE_PARAMETER );
 	}
 
 	/**
@@ -118,7 +118,7 @@ public final class OneEntityQueryGenerator extends AbstractRelationQueryGenerato
 		// ee.revision = :revision
 		removed.addWhereWithNamedParam( verEntCfg.getRevisionNumberPath(), "=", REVISION_PARAMETER );
 		// ee.revision_type = DEL
-		removed.addWhereWithNamedParam( getRevisionTypePath(), "=", DEL_REVISION_TYPE_PARAMETER );
+		removed.addWhereWithNamedParam( getElementRevisionTypePath(), "=", DEL_REVISION_TYPE_PARAMETER );
 	}
 
 	@Override

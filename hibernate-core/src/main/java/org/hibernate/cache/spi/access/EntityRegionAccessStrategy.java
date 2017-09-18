@@ -9,7 +9,7 @@ package org.hibernate.cache.spi.access;
 import org.hibernate.cache.CacheException;
 import org.hibernate.cache.spi.EntityRegion;
 import org.hibernate.engine.spi.SessionFactoryImplementor;
-import org.hibernate.engine.spi.SessionImplementor;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
 import org.hibernate.persister.entity.EntityPersister;
 
 /**
@@ -39,7 +39,11 @@ public interface EntityRegionAccessStrategy extends RegionAccessStrategy {
 	 * @param tenantIdentifier the tenant id, or null if multi-tenancy is not being used.
 	 * @return a key which can be used to identify this entity on this same region
 	 */
-	public Object generateCacheKey(Object id, EntityPersister persister, SessionFactoryImplementor factory, String tenantIdentifier);
+	Object generateCacheKey(
+			Object id,
+			EntityPersister persister,
+			SessionFactoryImplementor factory,
+			String tenantIdentifier);
 
 	/**
 	 * Performs reverse operation to {@link #generateCacheKey(Object, EntityPersister, SessionFactoryImplementor, String)}
@@ -47,14 +51,14 @@ public interface EntityRegionAccessStrategy extends RegionAccessStrategy {
 	 * @param cacheKey key previously returned from {@link #generateCacheKey(Object, EntityPersister, SessionFactoryImplementor, String)}
 	 * @return original id passed to {@link #generateCacheKey(Object, EntityPersister, SessionFactoryImplementor, String)}
 	 */
-	public Object getCacheKeyId(Object cacheKey);
+	Object getCacheKeyId(Object cacheKey);
 
 	/**
 	 * Get the wrapped entity cache region
 	 *
 	 * @return The underlying region
 	 */
-	public EntityRegion getRegion();
+	EntityRegion getRegion();
 
 	/**
 	 * Called after an item has been inserted (before the transaction completes),
@@ -68,7 +72,7 @@ public interface EntityRegionAccessStrategy extends RegionAccessStrategy {
 	 * @return Were the contents of the cache actual changed by this operation?
 	 * @throws CacheException Propagated from underlying {@link org.hibernate.cache.spi.Region}
 	 */
-	public boolean insert(SessionImplementor session, Object key, Object value, Object version) throws CacheException;
+	boolean insert(SharedSessionContractImplementor session, Object key, Object value, Object version) throws CacheException;
 
 	/**
 	 * Called after an item has been inserted (after the transaction completes),
@@ -82,7 +86,7 @@ public interface EntityRegionAccessStrategy extends RegionAccessStrategy {
 	 * @return Were the contents of the cache actual changed by this operation?
 	 * @throws CacheException Propagated from underlying {@link org.hibernate.cache.spi.Region}
 	 */
-	public boolean afterInsert(SessionImplementor session, Object key, Object value, Object version) throws CacheException;
+	boolean afterInsert(SharedSessionContractImplementor session, Object key, Object value, Object version) throws CacheException;
 
 	/**
 	 * Called after an item has been updated (before the transaction completes),
@@ -98,7 +102,7 @@ public interface EntityRegionAccessStrategy extends RegionAccessStrategy {
 	 * @return Were the contents of the cache actual changed by this operation?
 	 * @throws CacheException Propagated from underlying {@link org.hibernate.cache.spi.Region}
 	 */
-	public boolean update(SessionImplementor session, Object key, Object value, Object currentVersion, Object previousVersion) throws CacheException;
+	boolean update(SharedSessionContractImplementor session, Object key, Object value, Object currentVersion, Object previousVersion) throws CacheException;
 
 	/**
 	 * Called after an item has been updated (after the transaction completes),
@@ -114,5 +118,11 @@ public interface EntityRegionAccessStrategy extends RegionAccessStrategy {
 	 * @return Were the contents of the cache actual changed by this operation?
 	 * @throws CacheException Propagated from underlying {@link org.hibernate.cache.spi.Region}
 	 */
-	public boolean afterUpdate(SessionImplementor session, Object key, Object value, Object currentVersion, Object previousVersion, SoftLock lock) throws CacheException;
+	boolean afterUpdate(
+			SharedSessionContractImplementor session,
+			Object key,
+			Object value,
+			Object currentVersion,
+			Object previousVersion,
+			SoftLock lock) throws CacheException;
 }

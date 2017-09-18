@@ -20,7 +20,7 @@ import org.hibernate.engine.spi.EntityKey;
 import org.hibernate.engine.spi.PersistenceContext;
 import org.hibernate.engine.spi.SessionEventListenerManager;
 import org.hibernate.engine.spi.SessionFactoryImplementor;
-import org.hibernate.engine.spi.SessionImplementor;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
 import org.hibernate.engine.spi.Status;
 import org.hibernate.event.service.spi.EventListenerGroup;
 import org.hibernate.event.service.spi.EventListenerRegistry;
@@ -76,7 +76,7 @@ public final class TwoPhaseLoad {
 			final Object rowId,
 			final Object object,
 			final LockMode lockMode,
-			final SessionImplementor session) {
+			final SharedSessionContractImplementor session) {
 		final Object version = Versioning.getVersion( values, persister );
 		session.getPersistenceContext().addEntry(
 				object,
@@ -115,7 +115,7 @@ public final class TwoPhaseLoad {
 	public static void initializeEntity(
 			final Object entity,
 			final boolean readOnly,
-			final SessionImplementor session,
+			final SharedSessionContractImplementor session,
 			final PreLoadEvent preLoadEvent) {
 		final PersistenceContext persistenceContext = session.getPersistenceContext();
 		final EntityEntry entityEntry = persistenceContext.getEntry( entity );
@@ -129,7 +129,7 @@ public final class TwoPhaseLoad {
 			final Object entity,
 			final EntityEntry entityEntry,
 			final boolean readOnly,
-			final SessionImplementor session,
+			final SharedSessionContractImplementor session,
 			final PreLoadEvent preLoadEvent) throws HibernateException {
 		final PersistenceContext persistenceContext = session.getPersistenceContext();
 		final EntityPersister persister = entityEntry.getPersister();
@@ -147,7 +147,21 @@ public final class TwoPhaseLoad {
 		final Type[] types = persister.getPropertyTypes();
 		for ( int i = 0; i < hydratedState.length; i++ ) {
 			final Object value = hydratedState[i];
-			if ( value!=LazyPropertyInitializer.UNFETCHED_PROPERTY && value!= PropertyAccessStrategyBackRefImpl.UNKNOWN ) {
+			if ( value == LazyPropertyInitializer.UNFETCHED_PROPERTY ) {
+				// IMPLEMENTATION NOTE: This is a lazy property on a bytecode-enhanced entity.
+				// hydratedState[i] needs to remain LazyPropertyInitializer.UNFETCHED_PROPERTY so that
+				// setPropertyValues() below (ultimately AbstractEntityTuplizer#setPropertyValues) works properly
+				// No resolution is necessary, unless the lazy property is a collection.
+				if ( types[i].isCollectionType() ) {
+					// IMPLEMENTATION NOTE: this is a lazy collection property on a bytecode-enhanced entity.
+					// HHH-10989: We need to resolve the collection so that a CollectionReference is added to StatefulPersistentContext.
+					// As mentioned above, hydratedState[i] needs to remain LazyPropertyInitializer.UNFETCHED_PROPERTY
+					// so do not assign the resolved, unitialized PersistentCollection back to hydratedState[i].
+					types[i].resolve( value, session, entity );
+				}
+			}
+			else if ( value!= PropertyAccessStrategyBackRefImpl.UNKNOWN ) {
+				// we know value != LazyPropertyInitializer.UNFETCHED_PROPERTY
 				hydratedState[i] = types[i].resolve( value, session, entity );
 			}
 		}
@@ -212,7 +226,7 @@ public final class TwoPhaseLoad {
 					);
 
 					if ( put && factory.getStatistics().isStatisticsEnabled() ) {
-						factory.getStatisticsImplementor().secondLevelCachePut( cache.getRegion().getName() );
+						factory.getStatistics().secondLevelCachePut( cache.getRegion().getName() );
 					}
 				}
 				finally {
@@ -271,7 +285,7 @@ public final class TwoPhaseLoad {
 		}
 
 		if ( factory.getStatistics().isStatisticsEnabled() ) {
-			factory.getStatisticsImplementor().loadEntity( persister.getEntityName() );
+			factory.getStatistics().loadEntity( persister.getEntityName() );
 		}
 	}
 	
@@ -289,7 +303,7 @@ public final class TwoPhaseLoad {
 	 */
 	public static void postLoad(
 			final Object entity,
-			final SessionImplementor session,
+			final SharedSessionContractImplementor session,
 			final PostLoadEvent postLoadEvent) {
 		
 		if ( session.isEventSource() ) {
@@ -309,7 +323,7 @@ public final class TwoPhaseLoad {
 		}
 	}
 
-	private static boolean useMinimalPuts(SessionImplementor session, EntityEntry entityEntry) {
+	private static boolean useMinimalPuts(SharedSessionContractImplementor session, EntityEntry entityEntry) {
 		if ( session.getFactory().getSessionFactoryOptions().isMinimalPutsEnabled() ) {
 			return session.getCacheMode() != CacheMode.REFRESH;
 		}
@@ -337,7 +351,7 @@ public final class TwoPhaseLoad {
 			final Object object,
 			final EntityPersister persister,
 			final LockMode lockMode,
-			final SessionImplementor session) {
+			final SharedSessionContractImplementor session) {
 		session.getPersistenceContext().addEntity(
 				object,
 				Status.LOADING,
@@ -367,7 +381,7 @@ public final class TwoPhaseLoad {
 			final EntityPersister persister,
 			final LockMode lockMode,
 			final Object version,
-			final SessionImplementor session) {
+			final SharedSessionContractImplementor session) {
 		session.getPersistenceContext().addEntity(
 				object,
 				Status.LOADING,

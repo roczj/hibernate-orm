@@ -7,6 +7,7 @@
 package org.hibernate.boot.internal;
 
 import java.util.Map;
+import java.util.TimeZone;
 
 import org.hibernate.ConnectionReleaseMode;
 import org.hibernate.CustomEntityDirtinessStrategy;
@@ -19,6 +20,7 @@ import org.hibernate.SessionFactoryObserver;
 import org.hibernate.boot.SchemaAutoTooling;
 import org.hibernate.boot.TempTableDdlTransactionHandling;
 import org.hibernate.boot.registry.StandardServiceRegistry;
+import org.hibernate.boot.spi.SessionFactoryOptions;
 import org.hibernate.cache.spi.QueryCacheFactory;
 import org.hibernate.cfg.BaselineSessionEventsListenerBuilder;
 import org.hibernate.context.spi.CurrentTenantIdentifierResolver;
@@ -26,6 +28,7 @@ import org.hibernate.dialect.function.SQLFunction;
 import org.hibernate.hql.spi.id.MultiTableBulkIdStrategy;
 import org.hibernate.loader.BatchFetchStyle;
 import org.hibernate.proxy.EntityNotFoundDelegate;
+import org.hibernate.resource.jdbc.spi.PhysicalConnectionHandlingMode;
 import org.hibernate.resource.jdbc.spi.StatementInspector;
 import org.hibernate.tuple.entity.EntityTuplizerFactory;
 
@@ -35,109 +38,144 @@ import org.hibernate.tuple.entity.EntityTuplizerFactory;
  * @author Steve Ebersole
  */
 public interface SessionFactoryOptionsState {
-	public StandardServiceRegistry getServiceRegistry();
+	StandardServiceRegistry getServiceRegistry();
 
-	public Object getBeanManagerReference();
+	/**
+	 * @deprecated (since 5.2) see {@link SessionFactoryOptions#isJpaBootstrap} for details
+	 * on deprecation and intention/use.
+	 */
+	@Deprecated
+	boolean isJpaBootstrap();
 
-	public Object getValidatorFactoryReference();
+	boolean isJtaTransactionAccessEnabled();
 
-	public String getSessionFactoryName();
+	boolean isAllowRefreshDetachedEntity();
 
-	public boolean isSessionFactoryNameAlsoJndiName();
+	boolean isAllowOutOfTransactionUpdateOperations();
 
-	public boolean isFlushBeforeCompletionEnabled();
+	boolean isReleaseResourcesOnCloseEnabled();
 
-	public boolean isAutoCloseSessionEnabled();
+	Object getBeanManagerReference();
 
-	public boolean isStatisticsEnabled();
+	Object getValidatorFactoryReference();
 
-	public Interceptor getInterceptor();
+	String getSessionFactoryName();
 
-	public StatementInspector getStatementInspector();
+	boolean isSessionFactoryNameAlsoJndiName();
 
-	public SessionFactoryObserver[] getSessionFactoryObservers();
+	boolean isFlushBeforeCompletionEnabled();
 
-	public BaselineSessionEventsListenerBuilder getBaselineSessionEventsListenerBuilder();
+	boolean isAutoCloseSessionEnabled();
 
-	public boolean isIdentifierRollbackEnabled();
+	boolean isStatisticsEnabled();
 
-	public EntityMode getDefaultEntityMode();
+	Interceptor getInterceptor();
 
-	public EntityTuplizerFactory getEntityTuplizerFactory();
+	Class<? extends Interceptor> getStatelessInterceptorImplementor();
 
-	public boolean isCheckNullability();
+	StatementInspector getStatementInspector();
 
-	public boolean isInitializeLazyStateOutsideTransactionsEnabled();
+	SessionFactoryObserver[] getSessionFactoryObservers();
 
-	public MultiTableBulkIdStrategy getMultiTableBulkIdStrategy();
+	BaselineSessionEventsListenerBuilder getBaselineSessionEventsListenerBuilder();
 
-	public TempTableDdlTransactionHandling getTempTableDdlTransactionHandling();
+	boolean isIdentifierRollbackEnabled();
 
-	public BatchFetchStyle getBatchFetchStyle();
+	EntityMode getDefaultEntityMode();
 
-	public int getDefaultBatchFetchSize();
+	EntityTuplizerFactory getEntityTuplizerFactory();
 
-	public Integer getMaximumFetchDepth();
+	boolean isCheckNullability();
 
-	public NullPrecedence getDefaultNullPrecedence();
+	boolean isInitializeLazyStateOutsideTransactionsEnabled();
 
-	public boolean isOrderUpdatesEnabled();
+	MultiTableBulkIdStrategy getMultiTableBulkIdStrategy();
 
-	public boolean isOrderInsertsEnabled();
+	TempTableDdlTransactionHandling getTempTableDdlTransactionHandling();
 
-	public MultiTenancyStrategy getMultiTenancyStrategy();
+	BatchFetchStyle getBatchFetchStyle();
 
-	public CurrentTenantIdentifierResolver getCurrentTenantIdentifierResolver();
+	int getDefaultBatchFetchSize();
 
-	public boolean isJtaTrackByThread();
+	Integer getMaximumFetchDepth();
 
-	public Map getQuerySubstitutions();
+	NullPrecedence getDefaultNullPrecedence();
 
-	public boolean isStrictJpaQueryLanguageCompliance();
+	boolean isOrderUpdatesEnabled();
 
-	public boolean isNamedQueryStartupCheckingEnabled();
+	boolean isOrderInsertsEnabled();
 
-	public boolean isSecondLevelCacheEnabled();
+	MultiTenancyStrategy getMultiTenancyStrategy();
 
-	public boolean isQueryCacheEnabled();
+	CurrentTenantIdentifierResolver getCurrentTenantIdentifierResolver();
 
-	public QueryCacheFactory getQueryCacheFactory();
+	boolean isJtaTrackByThread();
 
-	public String getCacheRegionPrefix();
+	Map getQuerySubstitutions();
 
-	public boolean isMinimalPutsEnabled();
+	boolean isStrictJpaQueryLanguageCompliance();
 
-	public boolean isStructuredCacheEntriesEnabled();
+	boolean isNamedQueryStartupCheckingEnabled();
 
-	public boolean isDirectReferenceCacheEntriesEnabled();
+	boolean isConventionalJavaConstants();
 
-	public boolean isAutoEvictCollectionCache();
+	boolean isProcedureParameterNullPassingEnabled();
 
-	public SchemaAutoTooling getSchemaAutoTooling();
+	boolean isCollectionJoinSubqueryRewriteEnabled();
 
-	public int getJdbcBatchSize();
+	boolean isSecondLevelCacheEnabled();
 
-	public boolean isJdbcBatchVersionedData();
+	boolean isQueryCacheEnabled();
 
-	public boolean isScrollableResultSetsEnabled();
+	QueryCacheFactory getQueryCacheFactory();
 
-	public boolean isWrapResultSetsEnabled();
+	String getCacheRegionPrefix();
 
-	public boolean isGetGeneratedKeysEnabled();
+	boolean isMinimalPutsEnabled();
 
-	public Integer getJdbcFetchSize();
+	boolean isStructuredCacheEntriesEnabled();
 
-	public ConnectionReleaseMode getConnectionReleaseMode();
+	boolean isDirectReferenceCacheEntriesEnabled();
 
-	public boolean isCommentsEnabled();
+	boolean isAutoEvictCollectionCache();
 
-	public CustomEntityDirtinessStrategy getCustomEntityDirtinessStrategy();
+	SchemaAutoTooling getSchemaAutoTooling();
 
-	public EntityNameResolver[] getEntityNameResolvers();
+	int getJdbcBatchSize();
 
-	public EntityNotFoundDelegate getEntityNotFoundDelegate();
+	boolean isJdbcBatchVersionedData();
 
-	public Map<String, SQLFunction> getCustomSqlFunctionMap();
+	boolean isScrollableResultSetsEnabled();
 
-	public boolean isPreferUserTransaction();
+	boolean isWrapResultSetsEnabled();
+
+	boolean isGetGeneratedKeysEnabled();
+
+	Integer getJdbcFetchSize();
+
+	PhysicalConnectionHandlingMode getPhysicalConnectionHandlingMode();
+
+	boolean connectionProviderDisablesAutoCommit();
+
+	/**
+	 * @deprecated Use {@link #getPhysicalConnectionHandlingMode()} instead
+	 */
+	@Deprecated
+	ConnectionReleaseMode getConnectionReleaseMode();
+
+	boolean isCommentsEnabled();
+
+	CustomEntityDirtinessStrategy getCustomEntityDirtinessStrategy();
+
+	EntityNameResolver[] getEntityNameResolvers();
+
+	EntityNotFoundDelegate getEntityNotFoundDelegate();
+
+	Map<String, SQLFunction> getCustomSqlFunctionMap();
+
+	boolean isPreferUserTransaction();
+
+	TimeZone getJdbcTimeZone();
+
+	boolean isQueryParametersValidationEnabled();
 }

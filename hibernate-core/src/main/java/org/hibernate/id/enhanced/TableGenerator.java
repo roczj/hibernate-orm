@@ -25,14 +25,13 @@ import org.hibernate.boot.model.relational.Database;
 import org.hibernate.boot.model.relational.Namespace;
 import org.hibernate.boot.model.relational.QualifiedName;
 import org.hibernate.boot.model.relational.QualifiedNameParser;
-import org.hibernate.cfg.Environment;
 import org.hibernate.dialect.Dialect;
 import org.hibernate.engine.jdbc.env.spi.JdbcEnvironment;
 import org.hibernate.engine.jdbc.internal.FormatStyle;
 import org.hibernate.engine.jdbc.spi.JdbcServices;
 import org.hibernate.engine.jdbc.spi.SqlStatementLogger;
 import org.hibernate.engine.spi.SessionEventListenerManager;
-import org.hibernate.engine.spi.SessionImplementor;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
 import org.hibernate.id.Configurable;
 import org.hibernate.id.ExportableColumn;
 import org.hibernate.id.IdentifierGeneratorHelper;
@@ -360,15 +359,11 @@ public class TableGenerator implements PersistentIdentifierGenerator, Configurab
 		initialValue = determineInitialValue( params );
 		incrementSize = determineIncrementSize( params );
 
-		// if the increment size is greater than one, we prefer pooled optimization; but we
-		// need to see if the user prefers POOL or POOL_LO...
-		final String defaultPooledOptimizerStrategy = ConfigurationHelper.getBoolean( Environment.PREFER_POOLED_VALUES_LO, params, false )
-				? StandardOptimizerDescriptor.POOLED_LO.getExternalName()
-				: StandardOptimizerDescriptor.POOLED.getExternalName();
-		final String defaultOptimizerStrategy = incrementSize <= 1
-				? StandardOptimizerDescriptor.NONE.getExternalName()
-				: defaultPooledOptimizerStrategy;
-		final String optimizationStrategy = ConfigurationHelper.getString( OPT_PARAM, params, defaultOptimizerStrategy );
+		final String optimizationStrategy = ConfigurationHelper.getString(
+				OPT_PARAM,
+				params,
+				OptimizerFactory.determineImplicitOptimizerName( incrementSize, params )
+		);
 		optimizer = OptimizerFactory.buildOptimizer(
 				optimizationStrategy,
 				identifierType.getReturnedClass(),
@@ -522,7 +517,7 @@ public class TableGenerator implements PersistentIdentifierGenerator, Configurab
 	}
 
 	@Override
-	public Serializable generate(final SessionImplementor session, final Object obj) {
+	public Serializable generate(final SharedSessionContractImplementor session, final Object obj) {
 		final SqlStatementLogger statementLogger = session.getFactory().getServiceRegistry()
 				.getService( JdbcServices.class )
 				.getSqlStatementLogger();
@@ -549,6 +544,7 @@ public class TableGenerator implements PersistentIdentifierGenerator, Configurab
 
 													final PreparedStatement insertPS = prepareStatement( connection, insertQuery, statementLogger, statsCollector );
 													try {
+														LOG.tracef( "binding parameter [%s] - [%s]", 1, segmentValue );
 														insertPS.setString( 1, segmentValue );
 														value.bind( insertPS, 2 );
 														executeUpdate( insertPS, statsCollector );

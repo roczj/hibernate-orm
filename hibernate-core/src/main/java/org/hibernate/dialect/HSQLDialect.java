@@ -6,6 +6,11 @@
  */
 package org.hibernate.dialect;
 
+import java.io.Serializable;
+import java.sql.SQLException;
+import java.sql.Types;
+import java.util.Locale;
+
 import org.hibernate.JDBCException;
 import org.hibernate.LockMode;
 import org.hibernate.MappingException;
@@ -31,7 +36,7 @@ import org.hibernate.dialect.pagination.LimitHandler;
 import org.hibernate.dialect.pagination.LimitHelper;
 import org.hibernate.engine.jdbc.env.spi.NameQualifierSupport;
 import org.hibernate.engine.spi.RowSelection;
-import org.hibernate.engine.spi.SessionImplementor;
+import org.hibernate.engine.spi.SharedSessionContractImplementor;
 import org.hibernate.exception.spi.TemplatedViolatedConstraintNameExtracter;
 import org.hibernate.exception.spi.ViolatedConstraintNameExtracter;
 import org.hibernate.hql.spi.id.IdTableSupportStandardImpl;
@@ -44,12 +49,9 @@ import org.hibernate.internal.util.JdbcExceptionHelper;
 import org.hibernate.internal.util.ReflectHelper;
 import org.hibernate.persister.entity.Lockable;
 import org.hibernate.type.StandardBasicTypes;
-import org.jboss.logging.Logger;
 
-import java.io.Serializable;
-import java.sql.SQLException;
-import java.sql.Types;
-import java.util.Locale;
+import org.jboss.logging.Logger;
+import java.sql.DatabaseMetaData;
 
 /**
  * An SQL dialect compatible with HSQLDB (HyperSQL).
@@ -74,7 +76,7 @@ public class HSQLDialect extends Dialect {
 		@Override
 		public String processSql(String sql, RowSelection selection) {
 			final boolean hasOffset = LimitHelper.hasFirstRow( selection );
-			if (hsqldbVersion < 20) {
+			if ( hsqldbVersion < 200 ) {
 				return new StringBuilder( sql.length() + 10 )
 						.append( sql )
 						.insert(
@@ -95,14 +97,14 @@ public class HSQLDialect extends Dialect {
 
 		@Override
 		public boolean bindLimitParametersFirst() {
-			return hsqldbVersion < 20;
+			return hsqldbVersion < 200;
 		}
 	}
 
 	/**
-	 * version is 18 for 1.8 or 20 for 2.0
+	 * version is 180 for 1.8.0 or 200 for 2.0.0
 	 */
-	private int hsqldbVersion = 18;
+	private int hsqldbVersion = 180;
 	private final LimitHandler limitHandler;
 
 
@@ -116,8 +118,9 @@ public class HSQLDialect extends Dialect {
 			final Class props = ReflectHelper.classForName( "org.hsqldb.persist.HsqlDatabaseProperties" );
 			final String versionString = (String) props.getDeclaredField( "THIS_VERSION" ).get( null );
 
-			hsqldbVersion = Integer.parseInt( versionString.substring( 0, 1 ) ) * 10;
-			hsqldbVersion += Integer.parseInt( versionString.substring( 2, 3 ) );
+			hsqldbVersion = Integer.parseInt( versionString.substring( 0, 1 ) ) * 100;
+			hsqldbVersion += Integer.parseInt( versionString.substring( 2, 3 ) ) * 10;
+			hsqldbVersion += Integer.parseInt( versionString.substring( 4, 5 ) );
 		}
 		catch ( Throwable e ) {
 			// must be a very old version
@@ -142,8 +145,9 @@ public class HSQLDialect extends Dialect {
 		registerColumnType( Types.TIMESTAMP, "timestamp" );
 		registerColumnType( Types.VARCHAR, "varchar($l)" );
 		registerColumnType( Types.VARBINARY, "varbinary($l)" );
+		registerColumnType( Types.NCLOB, "clob" );
 
-		if ( hsqldbVersion < 20 ) {
+		if ( hsqldbVersion < 200 ) {
 			registerColumnType( Types.NUMERIC, "numeric" );
 		}
 		else {
@@ -151,7 +155,7 @@ public class HSQLDialect extends Dialect {
 		}
 
 		//HSQL has no Blob/Clob support .... but just put these here for now!
-		if ( hsqldbVersion < 20 ) {
+		if ( hsqldbVersion < 200 ) {
 			registerColumnType( Types.BLOB, "longvarbinary" );
 			registerColumnType( Types.CLOB, "longvarchar" );
 		}
@@ -185,7 +189,7 @@ public class HSQLDialect extends Dialect {
 		registerFunction( "database", new NoArgSQLFunction( "database", StandardBasicTypes.STRING ) );
 
 		// datetime functions
-		if ( hsqldbVersion < 20 ) {
+		if ( hsqldbVersion < 200 ) {
 			registerFunction( "sysdate", new NoArgSQLFunction( "sysdate", StandardBasicTypes.DATE, false ) );
 		}
 		else {
@@ -236,13 +240,14 @@ public class HSQLDialect extends Dialect {
 		registerFunction( "round", new StandardSQLFunction( "round" ) );
 		registerFunction( "roundmagic", new StandardSQLFunction( "roundmagic" ) );
 		registerFunction( "truncate", new StandardSQLFunction( "truncate" ) );
+		registerFunction( "trunc", new StandardSQLFunction( "trunc" ) );
 
 		registerFunction( "ceiling", new StandardSQLFunction( "ceiling" ) );
 		registerFunction( "floor", new StandardSQLFunction( "floor" ) );
 
 		// special functions
 		// from v. 2.2.0 ROWNUM() is supported in all modes as the equivalent of Oracle ROWNUM
-		if ( hsqldbVersion > 21 ) {
+		if ( hsqldbVersion > 219 ) {
 			registerFunction( "rownum", new NoArgSQLFunction( "rownum", StandardBasicTypes.INTEGER ) );
 		}
 
@@ -266,7 +271,7 @@ public class HSQLDialect extends Dialect {
 
 	@Override
 	public String getForUpdateString() {
-		if ( hsqldbVersion >= 20 ) {
+		if ( hsqldbVersion >= 200 ) {
 			return " for update";
 		}
 		else {
@@ -286,7 +291,7 @@ public class HSQLDialect extends Dialect {
 
 	@Override
 	public String getLimitString(String sql, boolean hasOffset) {
-		if ( hsqldbVersion < 20 ) {
+		if ( hsqldbVersion < 200 ) {
 			return new StringBuilder( sql.length() + 10 )
 					.append( sql )
 					.insert(
@@ -302,7 +307,7 @@ public class HSQLDialect extends Dialect {
 
 	@Override
 	public boolean bindLimitParametersFirst() {
-		return hsqldbVersion < 20;
+		return hsqldbVersion < 200;
 	}
 
 	@Override
@@ -312,7 +317,7 @@ public class HSQLDialect extends Dialect {
 
 	@Override
 	public boolean supportsColumnCheck() {
-		return hsqldbVersion >= 20;
+		return hsqldbVersion >= 200;
 	}
 
 	@Override
@@ -348,7 +353,7 @@ public class HSQLDialect extends Dialect {
 
 	@Override
 	protected String getDropSequenceString(String sequenceName) {
-		return "drop sequence " + sequenceName;
+		return "drop sequence " + sequenceName + " if exists";
 	}
 
 	@Override
@@ -369,7 +374,7 @@ public class HSQLDialect extends Dialect {
 
 	@Override
 	public ViolatedConstraintNameExtracter getViolatedConstraintNameExtracter() {
-		return hsqldbVersion < 20 ? EXTRACTER_18 : EXTRACTER_20;
+		return hsqldbVersion < 200 ? EXTRACTER_18 : EXTRACTER_20;
 	}
 
 	private static final ViolatedConstraintNameExtracter EXTRACTER_18 = new TemplatedViolatedConstraintNameExtracter() {
@@ -497,7 +502,7 @@ public class HSQLDialect extends Dialect {
 		// the definition and data is private to the session and table declaration
 		// can happen in the middle of a transaction
 
-		if ( hsqldbVersion < 20 ) {
+		if ( hsqldbVersion < 200 ) {
 			return new GlobalTemporaryTableBulkIdStrategy(
 					new IdTableSupportStandardImpl() {
 						@Override
@@ -591,7 +596,7 @@ public class HSQLDialect extends Dialect {
 			return new OptimisticForceIncrementLockingStrategy( lockable, lockMode );
 		}
 
-		if ( hsqldbVersion < 20 ) {
+		if ( hsqldbVersion < 200 ) {
 			return new ReadUncommittedLockingStrategy( lockable, lockMode );
 		}
 		else {
@@ -604,7 +609,8 @@ public class HSQLDialect extends Dialect {
 			super( lockable, lockMode );
 		}
 
-		public void lock(Serializable id, Object version, Object object, int timeout, SessionImplementor session)
+		@Override
+		public void lock(Serializable id, Object version, Object object, int timeout, SharedSessionContractImplementor session)
 				throws StaleObjectStateException, JDBCException {
 			if ( getLockMode().greaterThan( LockMode.READ ) ) {
 				LOG.hsqldbSupportsOnlyReadCommittedIsolation();
@@ -615,7 +621,7 @@ public class HSQLDialect extends Dialect {
 
 	@Override
 	public boolean supportsCommentOn() {
-		return hsqldbVersion >= 20;
+		return hsqldbVersion >= 200;
 	}
 
 	// Overridden informational metadata ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -632,12 +638,12 @@ public class HSQLDialect extends Dialect {
 
 	@Override
 	public boolean doesReadCommittedCauseWritersToBlockReaders() {
-		return hsqldbVersion >= 20;
+		return hsqldbVersion >= 200;
 	}
 
 	@Override
 	public boolean doesRepeatableReadCauseReadersToBlockWriters() {
-		return hsqldbVersion >= 20;
+		return hsqldbVersion >= 200;
 	}
 
 	@Override
@@ -652,7 +658,8 @@ public class HSQLDialect extends Dialect {
 
 	@Override
 	public boolean supportsTupleDistinctCounts() {
-		return false;
+		// from v. 2.2.9 is added support for COUNT(DISTINCT ...) with multiple arguments
+		return hsqldbVersion >= 229;
 	}
 
 	@Override
@@ -663,5 +670,10 @@ public class HSQLDialect extends Dialect {
 	@Override
 	public NameQualifierSupport getNameQualifierSupport() {
 		return NameQualifierSupport.SCHEMA;
+	}
+
+	@Override
+	public boolean supportsNamedParameters(DatabaseMetaData databaseMetaData) throws SQLException {
+		return false;
 	}
 }

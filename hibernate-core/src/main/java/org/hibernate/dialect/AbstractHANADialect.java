@@ -8,6 +8,7 @@ package org.hibernate.dialect;
 
 import java.io.FilterReader;
 import java.io.Reader;
+import java.sql.CallableStatement;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Types;
@@ -121,6 +122,27 @@ public abstract class AbstractHANADialect extends Dialect {
 					}
 
 				}
+
+				@Override
+				protected void doBind(CallableStatement st, X value, String name, WrapperOptions options)
+						throws SQLException {
+					final CharacterStream characterStream = javaTypeDescriptor.unwrap(
+							value,
+							CharacterStream.class,
+							options
+					);
+
+					if ( value instanceof ClobImplementer ) {
+						st.setCharacterStream(
+								name,
+								new CloseSuppressingReader( characterStream.asReader() ),
+								characterStream.getLength()
+						);
+					}
+					else {
+						st.setCharacterStream( name, characterStream.asReader(), characterStream.getLength() );
+					}
+				}
 			};
 		}
 	};
@@ -139,13 +161,37 @@ public abstract class AbstractHANADialect extends Dialect {
 							options );
 
 					if ( value instanceof NClobImplementer ) {
-						st.setCharacterStream( index, new CloseSuppressingReader( characterStream.asReader() ),
-								characterStream.getLength() );
+						st.setCharacterStream(
+								index,
+								new CloseSuppressingReader( characterStream.asReader() ),
+								characterStream.getLength()
+						);
 					}
 					else {
 						st.setCharacterStream( index, characterStream.asReader(), characterStream.getLength() );
 					}
 
+				}
+
+				@Override
+				protected void doBind(CallableStatement st, X value, String name, WrapperOptions options)
+						throws SQLException {
+					final CharacterStream characterStream = javaTypeDescriptor.unwrap(
+							value,
+							CharacterStream.class,
+							options
+					);
+
+					if ( value instanceof NClobImplementer ) {
+						st.setCharacterStream(
+								name,
+								new CloseSuppressingReader( characterStream.asReader() ),
+								characterStream.getLength()
+						);
+					}
+					else {
+						st.setCharacterStream( name, characterStream.asReader(), characterStream.getLength() );
+					}
 				}
 			};
 		}
@@ -444,7 +490,30 @@ public abstract class AbstractHANADialect extends Dialect {
 			return getForUpdateString( lockMode );
 		}
 
-		return getForUpdateString( lockMode ) + " of " + aliases;
+		String clause = getForUpdateString( lockMode ) + " of " + aliases;
+		if(lockOptions.getTimeOut() == LockOptions.NO_WAIT) {
+			clause += " nowait";
+		}
+		return clause;
+	}
+
+	public String getForUpdateNowaitString() {
+		return getForUpdateString() + " nowait";
+	}
+
+	@Override
+	public String getReadLockString(int timeout) {
+		return getWriteLockString( timeout );
+	}
+
+	@Override
+	public String getWriteLockString(int timeout) {
+		if ( timeout == LockOptions.NO_WAIT ) {
+			return getForUpdateNowaitString();
+		}
+		else {
+			return getForUpdateString();
+		}
 	}
 
 	@Override

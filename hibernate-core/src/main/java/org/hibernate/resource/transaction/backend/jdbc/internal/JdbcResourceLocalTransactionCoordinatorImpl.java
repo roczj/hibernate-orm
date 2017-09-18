@@ -16,12 +16,12 @@ import org.hibernate.engine.transaction.spi.IsolationDelegate;
 import org.hibernate.engine.transaction.spi.TransactionObserver;
 import org.hibernate.internal.CoreMessageLogger;
 import org.hibernate.resource.jdbc.spi.JdbcSessionOwner;
-import org.hibernate.resource.transaction.SynchronizationRegistry;
-import org.hibernate.resource.transaction.TransactionCoordinator;
-import org.hibernate.resource.transaction.TransactionCoordinatorBuilder;
 import org.hibernate.resource.transaction.backend.jdbc.spi.JdbcResourceTransaction;
 import org.hibernate.resource.transaction.backend.jdbc.spi.JdbcResourceTransactionAccess;
 import org.hibernate.resource.transaction.internal.SynchronizationRegistryStandardImpl;
+import org.hibernate.resource.transaction.spi.SynchronizationRegistry;
+import org.hibernate.resource.transaction.spi.TransactionCoordinator;
+import org.hibernate.resource.transaction.spi.TransactionCoordinatorBuilder;
 import org.hibernate.resource.transaction.spi.TransactionCoordinatorOwner;
 import org.hibernate.resource.transaction.spi.TransactionStatus;
 
@@ -59,10 +59,20 @@ public class JdbcResourceLocalTransactionCoordinatorImpl implements TransactionC
 			TransactionCoordinatorBuilder transactionCoordinatorBuilder,
 			TransactionCoordinatorOwner owner,
 			JdbcResourceTransactionAccess jdbcResourceTransactionAccess) {
-		this.observers = new ArrayList<TransactionObserver>();
+		this.observers = new ArrayList<>();
 		this.transactionCoordinatorBuilder = transactionCoordinatorBuilder;
 		this.jdbcResourceTransactionAccess = jdbcResourceTransactionAccess;
 		this.transactionCoordinatorOwner = owner;
+	}
+
+	/**
+	 * Needed because while iterating the observers list and executing the before/update callbacks,
+	 * some observers might get removed from the list.
+	 *
+	 * @return TransactionObserver
+	 */
+	private Iterable<TransactionObserver> observers() {
+		return new ArrayList<>( observers );
 	}
 
 	@Override
@@ -84,8 +94,7 @@ public class JdbcResourceLocalTransactionCoordinatorImpl implements TransactionC
 
 	@Override
 	public boolean isJoined() {
-		return physicalTransactionDelegate != null && physicalTransactionDelegate.getStatus() == TransactionStatus.ACTIVE;
-
+		return physicalTransactionDelegate != null && getTransactionDriverControl().isActive( true );
 	}
 
 	@Override
@@ -134,7 +143,8 @@ public class JdbcResourceLocalTransactionCoordinatorImpl implements TransactionC
 		if(this.timeOut > 0) {
 			transactionCoordinatorOwner.setTransactionTimeOut( this.timeOut );
 		}
-		for ( TransactionObserver observer : observers ) {
+		transactionCoordinatorOwner.afterTransactionBegin();
+		for ( TransactionObserver observer : observers() ) {
 			observer.afterBegin();
 		}
 		log.trace( "ResourceLocalTransactionCoordinatorImpl#afterBeginCallback" );
@@ -145,7 +155,7 @@ public class JdbcResourceLocalTransactionCoordinatorImpl implements TransactionC
 		try {
 			transactionCoordinatorOwner.beforeTransactionCompletion();
 			synchronizationRegistry.notifySynchronizationsBeforeTransactionCompletion();
-			for ( TransactionObserver observer : observers ) {
+			for ( TransactionObserver observer : observers() ) {
 				observer.beforeCompletion();
 			}
 		}
@@ -164,21 +174,12 @@ public class JdbcResourceLocalTransactionCoordinatorImpl implements TransactionC
 		synchronizationRegistry.notifySynchronizationsAfterTransactionCompletion( statusToSend );
 
 		transactionCoordinatorOwner.afterTransactionCompletion( successful, false );
-		for ( TransactionObserver observer : observers ) {
+		for ( TransactionObserver observer : observers() ) {
 			observer.afterCompletion( successful, false );
 		}
-		invalidateDelegate();
 	}
 
-	private void invalidateDelegate() {
-		if ( physicalTransactionDelegate == null ) {
-			throw new IllegalStateException( "Physical-transaction delegate not known on attempt to invalidate" );
-		}
-
-		physicalTransactionDelegate.invalidate();
-		physicalTransactionDelegate = null;
-	}
-
+	@Override
 	public void addObserver(TransactionObserver observer) {
 		observers.add( observer );
 	}
@@ -260,14 +261,16 @@ public class JdbcResourceLocalTransactionCoordinatorImpl implements TransactionC
 
 		@Override
 		public void markRollbackOnly() {
-			if ( log.isDebugEnabled() ) {
-				log.debug(
-						"JDBC transaction marked for rollback-only (exception provided for stack trace)",
-						new Exception( "exception just for purpose of providing stack trace" )
-				);
-			}
+			if ( getStatus() != TransactionStatus.ROLLED_BACK && getStatus() != TransactionStatus.NOT_ACTIVE ) {
+				if ( log.isDebugEnabled() ) {
+					log.debug(
+							"JDBC transaction marked for rollback-only (exception provided for stack trace)",
+							new Exception( "exception just for purpose of providing stack trace" )
+					);
+				}
 
-			rollbackOnly = true;
+				rollbackOnly = true;
+			}
 		}
 	}
 }

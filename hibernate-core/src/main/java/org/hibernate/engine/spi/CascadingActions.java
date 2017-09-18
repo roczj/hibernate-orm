@@ -96,6 +96,7 @@ public class CascadingActions {
 				LockOptions lockOptions = (LockOptions) anything;
 				lr.setTimeOut( lockOptions.getTimeOut() );
 				lr.setScope( lockOptions.getScope() );
+				lr.setFollowOnLocking( lockOptions.getFollowOnLocking() );
 				if ( lockOptions.getScope() ) {
 					lockMode = lockOptions.getLockMode();
 				}
@@ -303,7 +304,7 @@ public class CascadingActions {
 				CollectionType collectionType,
 				Object collection) {
 			// persists don't cascade to uninitialized collections
-			return getAllElementsIterator( session, collectionType, collection );
+			return getLoadedElementsIterator( session, collectionType, collection );
 		}
 
 		@Override
@@ -362,18 +363,16 @@ public class CascadingActions {
 		@Override
 		public void noCascade(
 				EventSource session,
-				Object child,
 				Object parent,
 				EntityPersister persister,
+				Type propertyType,
 				int propertyIndex) {
-			if ( child == null ) {
-				return;
-			}
-			Type type = persister.getPropertyTypes()[propertyIndex];
-			if ( type.isEntityType() ) {
-				String childEntityName = ((EntityType) type).getAssociatedEntityName( session.getFactory() );
+			if ( propertyType.isEntityType() ) {
+				Object child = persister.getPropertyValue( parent, propertyIndex );
+				String childEntityName = ((EntityType) propertyType).getAssociatedEntityName( session.getFactory() );
 
-				if ( !isInManagedState( child, session )
+				if ( child != null
+						&& !isInManagedState( child, session )
 						&& !(child instanceof HibernateProxy) //a proxy cannot be transient and it breaks ForeignKeys.isTransient
 						&& ForeignKeys.isTransient( childEntityName, child, null, session ) ) {
 					String parentEntiytName = persister.getEntityName();
@@ -453,7 +452,7 @@ public class CascadingActions {
 		}
 
 		@Override
-		public void noCascade(EventSource session, Object child, Object parent, EntityPersister persister, int propertyIndex) {
+		public void noCascade(EventSource session, Object parent, EntityPersister persister, Type propertyType, int propertyIndex) {
 		}
 
 		@Override
@@ -484,7 +483,7 @@ public class CascadingActions {
 	 * any new elements from the database.
 	 */
 	public static Iterator getLoadedElementsIterator(
-			SessionImplementor session,
+			SharedSessionContractImplementor session,
 			CollectionType collectionType,
 			Object collection) {
 		if ( collectionIsInitialized( collection ) ) {
